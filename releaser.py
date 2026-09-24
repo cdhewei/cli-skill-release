@@ -875,44 +875,51 @@ def _auto_topics(keywords_str, max_len=48):
 
 def cmd_release(args):
     d = args.path or "."
-    ok = False  # clawhub CLI 是否真一键成功（2b 分支会改写）
     is_git = os.path.isdir(os.path.join(d, ".git"))
     if not is_git:
-        print("[release] 注意: 当前不是 git 仓库，跳过推送（仍可生成导入情报）。")
+        print("[release] 注意: 当前不是 git 仓库，跳过提交/推送（仍可生成导入步骤）。")
     # 1) 校验发布就绪
     print("[release] 先跑 validate：")
     fails = validate_skill(d)
     _print_report()
     if fails:
         print("[release] 有 %d 项 FAIL，建议先修复再发。\n" % fails)
-    # 2) git 推送（dry-run 时不推）
+    # 2) 本地提交（dry-run 不提交）；远程推送需显式 --push
     if not args.dry_run:
-        subprocess.run(["git", "-C", d, "add", "-A"], check=False)
-        st = subprocess.run(["git", "-C", d, "status", "--porcelain"],
-                            capture_output=True, text=True, check=False)
-        if st.stdout.strip():
-            msg = args.message or ("chore: release via releaser (%s)" % datetime.date.today().isoformat())
-            subprocess.run(["git", "-C", d, "commit", "-m", msg], check=False)
-            pr = subprocess.run(["git", "-C", d, "push", args.remote, args.branch],
+        if is_git:
+            subprocess.run(["git", "-C", d, "add", "-A"], check=False)
+            st = subprocess.run(["git", "-C", d, "status", "--porcelain"],
                                 capture_output=True, text=True, check=False)
-            print(pr.stdout.strip() or pr.stderr.strip() or "[release] 已尝试推送")
+            if st.stdout.strip():
+                msg = args.message or ("chore: release via releaser (%s)" % datetime.date.today().isoformat())
+                subprocess.run(["git", "-C", d, "commit", "-m", msg], check=False)
+                print("[release] 已本地提交（未推送；需要推送请加 --push）。")
+            else:
+                print("[release] 无改动，未提交")
         else:
-            print("[release] 无改动，未提交")
+            print("[release] 非 git 仓库，跳过本地提交。")
     else:
-        print("[release] --dry-run：跳过 git 推送")
+        print("[release] --dry-run：跳过本地提交与推送")
 
-    # 2b) 可选：clawhub CLI 真一键（英文生态；仅当 CLI 已装且登录，否则回退）
-    if not args.dry_run and not args.no_cli and os.path.isfile(os.path.join(d, "SKILL.md")):
+    # 2b) 远程推送：仅当显式 --push（绝不静默推送）
+    if args.push and not args.dry_run and is_git:
+        pr = subprocess.run(["git", "-C", d, "push", args.remote, args.branch],
+                            capture_output=True, text=True, check=False)
+        print(pr.stdout.strip() or pr.stderr.strip() or "[release] 已尝试推送")
+    elif args.push and not is_git:
+        print("[release] --push 但当前不是 git 仓库，无法推送。")
+
+    # 2c) ClawHub 发布：仅当显式 --publish（且本机已装 clawhub CLI 并登录）
+    if args.publish and not args.dry_run and os.path.isfile(os.path.join(d, "SKILL.md")):
         fm, _ = parse_frontmatter(os.path.join(d, "SKILL.md"))
         slug = fm.get("slug") or os.path.basename(os.path.abspath(d))
         name = fm.get("name") or slug
         ver = fm.get("version") or "1.0.0"
         ok, msg = _clawhub_publish(d, slug, name, ver, args.message)
-        print("[release] clawhub CLI: " + msg)
+        print("[release] clawhub publish: " + msg)
         if ok:
-            print("[release] 已通过 clawhub CLI 真一键发布（英文生态），无需再点网页。")
-            # 2b 真一键成功同样要登记账本（状态层 A），否则最成功的发布路径反而漏登记，
-            # 与 SKILL.md §2.13「无论 clawhub CLI 真一键还是人工导入都会登记」矛盾。
+            print("[release] 已通过 clawhub CLI 发布（需你本机已安装并登录 clawhub CLI）。")
+            # 发布成功同样要登记账本（状态层 A）
             try:
                 _ledger_add({
                     "slug": slug, "name": name, "repo": _repo_url(d) or "",
@@ -924,16 +931,18 @@ def cmd_release(args):
             except Exception:
                 pass
             return 0
+        else:
+            print("[release] clawhub 发布未成功，下方仍给出人工导入步骤。")
 
-    # 3) 构造近一键发布情报
+    # 3) 构造人工导入步骤（默认路径：不推送、不发布，只给预填情报）
     fm, _ = parse_frontmatter(os.path.join(d, "SKILL.md")) if os.path.isfile(os.path.join(d, "SKILL.md")) else ({}, "")
     name = fm.get("name") or os.path.basename(os.path.abspath(d))
     slug = fm.get("slug") or os.path.basename(os.path.abspath(d))
-    ver = fm.get("version") or "1.0.0"  # 与 2b 分支同义，确保 2c 账本登记在 dry-run/no-cli 路径也不缺字段
+    ver = fm.get("version") or "1.0.0"
     cats = categorize(" ".join([name, fm.get("keywords", ""), fm.get("description", "")]))[:3] or ["Developer Tools"]
     topics = _auto_topics(fm.get("keywords", ""))
     repo = _repo_url(d)
-    print("\n[release] 下一步（ClawHub 导入，仅差你登录后一次点击）:")
+    print("\n[release] 下一步（ClawHub 导入，需你登录后点一次）:")
     print("  ① 打开 ClawHub → Import from GitHub")
     if repo:
         print("  ② 粘贴仓库地址: " + repo)
@@ -943,23 +952,18 @@ def cmd_release(args):
     print("      License=MIT-0 | 分类=%s" % " / ".join(cats))
     print("      Topics=%s  (≤48 字符已自动截断)" % topics)
     print("  ④ 点 Publish selected 即上线。")
-    # 2c) 自动登记到账本（状态层 A）：发布动作即记录，供 recheck 生命周期治理消费
+    # 登记到账本（状态层 A）：发布动作即记录，供 recheck 生命周期治理消费
     try:
         _ledger_add({
             "slug": slug, "name": name, "repo": repo or "",
             "version": ver, "score": _score(),
-            "market": "clawhub" if ok else "manual",
+            "market": "manual",
             "path": os.path.abspath(d),
             "published_at": datetime.date.today().isoformat(),
             "last_checked": datetime.date.today().isoformat(),
         })
     except Exception:
         pass  # 账本登记失败不影响发布主流程
-    # --api-token：REST/网页 publish 端点仍不存在（CLI 是合法真一键路径，见 _clawhub_publish）。
-    if args.api_token:
-        print("\n[release] 已接收 --api-token，但 ClawHub 当前无公开 REST/网页 publish 端点；")
-        print("          release 仍走上面的人工导入流程（情报已为你预填）。")
-        print("          真一键请走 clawhub CLI（release 会自动探测直发），或等官方公开 publish 端点。")
     return 0
 
 
@@ -1576,14 +1580,15 @@ def build_parser():
     b.add_argument("--message", default=None)
     b.set_defaults(func=cmd_bump)
 
-    r = sub.add_parser("release", help="git 推送 + 构造 ClawHub 导入链接（近一键）")
+    r = sub.add_parser("release", help="本地提交 + 构造 ClawHub 导入步骤（默认不推送、不发布）")
     r.add_argument("--path", default=".")
     r.add_argument("--remote", default="origin")
     r.add_argument("--branch", default="main")
     r.add_argument("--message", default=None)
-    r.add_argument("--dry-run", action="store_true", help="只生成导入情报，不推送")
-    r.add_argument("--api-token", default=None, help="预留：ClawHub publish 令牌。当前 ClawHub 无公开 publish API，仍走人工导入（情报已预填）")
-    r.add_argument("--no-cli", action="store_true", help="禁用 clawhub CLI 直发，强制走人工导入情报（默认会探测 clawhub CLI 已装则真一键）")
+    r.add_argument("--dry-run", action="store_true", help="只生成导入步骤，不提交")
+    r.add_argument("--push", action="store_true", help="显式授权：将本地提交推送到远端（默认不推送）")
+    r.add_argument("--publish", action="store_true",
+                   help="显式授权：通过本机已登录的 clawhub CLI 发布到 ClawHub（默认不发布，仅给出人工导入步骤）")
     r.set_defaults(func=cmd_release)
 
     d = sub.add_parser("doctor", help="自检本工具或对 --path 目标校验")
@@ -1597,7 +1602,7 @@ def build_parser():
     bdg.add_argument("--page", default=None, help="徽章链回地址（默认 RELEASER_PAGE 或环境变量）")
     bdg.set_defaults(func=cmd_badge)
 
-    pr = sub.add_parser("promote", help="★宣传工具箱：徽章区+电梯演讲+社媒文案+链式玩法")
+    pr = sub.add_parser("promote", help="★发布说明工具箱：徽章区+要点说明+社媒文案+链回玩法")
     pr.add_argument("--path", default=None, help="可选：给定则先校验并展示就绪分")
     pr.add_argument("--mode", default="skill", choices=["skill", "cli", "package"])
     pr.add_argument("--page", default=None, help="链回地址（默认 RELEASER_PAGE 或环境变量）")

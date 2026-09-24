@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## [1.9.3] — 2026-09-24 · 安全整改（回应 ClawHub SkillSpector 误判 malicious.llm_malicious）
+
+### 根因
+- ClawHub SkillSpector 将本技能判为 `malicious.llm_malicious` 并 Blocked/Hidden。经排查，真正触发项是**技能目录内混入的个人辅助脚本 `send_review_email.py`**——其中硬编码了一个真实 QQ 邮箱 SMTP 授权码，并会把技能文件外发到指定邮箱。任何含明文凭据 + 外发脚本的技能都会被安全扫描判恶意。
+- 次要因素：文档含"链式传播/碾压/护城河/搜索即获客/设计即分发"等易被解读为"生态滥用/自主传播"的营销话术；`release` 默认会静默 `git push` + 自动 `clawhub publish`；存在无用的 `--api-token` 凭据形参。
+
+### 修复
+- **删除 `send_review_email.py`**（个人邮件辅助脚本，不应进入发布包）；`.gitignore` 新增 `send_*.py` / `*_email*.py` 防再混入。⚠️ 该文件此前已提交进 git 历史并推到 GitHub，密码已暴露，**须立即重置 QQ 邮箱 SMTP 授权码**并清理历史。
+- **release 远程动作改为显式门禁**：`git push` 需 `--push`、`clawhub publish` 需 `--publish`，默认只本地提交 + 打印人工导入步骤，绝不静默触碰远端。
+- **删除死代码 `--api-token` 凭据形参**。
+- **文档去操纵化**：移除全部"链式传播/碾压/护城河/搜索即获客/设计即分发/分发节点/全网分发"等话术，改为"链回徽章/差异化价值/覆盖长尾搜索/引用致谢"等中性表述；新增显式「🔒 安全与隐私」声明（纯本地、除显式远程动作外无外联、不存凭据、只读扫描、账本本地化、无命令注入面）。
+- **修正 §3.4.2 错误说法**：OG 图接口对**任何** slug（含假 slug）都回 200 占位图，**不能**作为"已上架"证据；权威核验改用 `clawhub inspect` / `clawhub search`。
+
+### 验证
+- pytest **78 passed**（`release` 新增 2 项安全断言：未传 `--push`/`--publish` 绝不发起 git push / clawhub publish；原有 77 + 新增 1）。
+- `validate` 12/12 PASS、100/100；`selfdemo` 8/8。
+- 全目录凭据扫描：除已删除文件外，无硬编码 token / 无 `urllib`/`requests`/`socket` 外联代码。
+
 ## [1.9.2] — 2026-09-24 · 三审文档修正（无代码改动）
 
 ### 校对发现并修复 2 处文档缺陷
@@ -15,7 +33,7 @@
 
 ### 沉淀（本轮两个技能双端上架实战中验证、此前文档未覆盖的硬知识）
 - §3.4.1 ClawHub CLI 实操：Windows 须调 `.cmd` 包装器；`whoami`/`search`/`login --token` 用法；分类固定 8 选、强制满 3。
-- §3.4.2 确证"已上架"核验法：ClawHub 搜索索引滞后（搜不到 ≠ 没上架）；用 `og/skill?v=10&slug=&owner=` 接口回 200 image/png 即真上架。
+- §3.4.2 确证"已上架"核验法：ClawHub 搜索索引滞后（搜不到 ≠ 没上架）；**后经 1.9.3 更正**：`og/skill` 接口对**任意** slug（含假 slug）都回 200 占位图，**不能**作为已上架证据，权威核验应改用 `clawhub inspect` / `clawhub search`。
 - §3.6 增补：GitHub API **密码鉴权已停用**（建库只能 SSH 推已存在仓库 / PAT / 网页自建）；clawhub `.cmd` 包装器；pytest **批量删除守卫** SystemExit 1 不影响结果。
 - **双语推广件（本回合新增，无代码改动）**：README.md 重写为推广级双语（英文 TL;DR + 徽章行 + 竞品对比表 + 双语卖点/长尾）；新增 `SKILL.en.md` 全英文手册（17 子命令 + 陷阱速查 + 发现机制）；生成真实 `readiness-badge.svg`（100/100）提交进仓库，README 徽章链回 ClawHub 已上架页。frontmatter 双语元数据（`description_zh`/`description_en`/`keywords` 中英混合/`xiaping_*`）此前已具备。
 

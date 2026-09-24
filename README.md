@@ -1,8 +1,8 @@
 # cli-skill-release · 零依赖 Python CLI 技能发布工程
 
-> **English TL;DR** — `cli-skill-release` is a **release-engineering toolkit for zero-dependency Python CLI agent skills**. Its core is a real, runnable tool `releaser.py` (17 subcommands) that doesn't just *describe* how to publish — it *does* the work: scans publish traps, scores readiness 0–100 with **functional verification that actually boots your CLI**, gives a CI quality gate, scaffolds a project, and builds marketplace publish intel. Where competitors (skill-lint, jeremyknows/publish-skills, skill-creator) only hand you a document to follow, we **execute the engine**. MIT-0, zero dependencies (stdlib only), 77 passing tests.
+> **English TL;DR** — `cli-skill-release` is a **release-engineering toolkit for zero-dependency Python CLI agent skills**. Its core is a real, runnable tool `releaser.py` (17 subcommands) that doesn't just *describe* how to publish — it *does* the work: scans publish traps, scores readiness 0–100 with **functional verification that actually boots your CLI**, gives a CI quality gate, scaffolds a project, and builds marketplace publish intel. Where competitors (skill-lint, jeremyknows/publish-skills, skill-creator) only hand you a document to follow, we **execute the engine**. MIT-0, zero dependencies (stdlib only), 78 passing tests.
 
-> **一句话（中文）**：把"以 Python CLI 形式交付的 WorkBuddy / ClawHub 技能做成可发布项目并上架"的全流程固化。核心是零依赖 `releaser.py`（17 个子命令）：主动扫描发布陷阱、给 0–100 就绪分（含★功能级验证真跑 CLI）、CI 质量门禁、脚手架、推送上架、链式传播徽章。竞品（skill-lint / jeremyknows / skill-creator）只给文档让你照着做，我们**替你把引擎跑起来**。MIT-0，零依赖，77 测试全绿。
+> **一句话（中文）**：把"以 Python CLI 形式交付的 WorkBuddy / ClawHub 技能做成可发布项目并上架"的全流程固化。核心是零依赖 `releaser.py`（17 个子命令）：主动扫描发布陷阱、给 0–100 就绪分（含★功能级验证真跑 CLI）、CI 质量门禁、脚手架、推送上架、链回徽章。竞品（skill-lint / jeremyknows / skill-creator）只给文档让你照着做，我们**替你把引擎跑起来**。MIT-0，零依赖，78 测试全绿。
 
 [![releaser readiness](https://raw.githubusercontent.com/cdhewei/cli-skill-release/main/readiness-badge.svg)](https://clawhub.ai/cdhewei/cli-skill-release)
 [![License: MIT-0](https://img.shields.io/badge/license-MIT--0-blue.svg)](#license)
@@ -15,9 +15,9 @@
 
 ## Why not just lint? / 为什么不是又一个 lint 工具
 
-Skill-lint / agent-skill-linter / @effectorhq/skill-lint / jeremyknows/publish-skills only check **paperwork** (frontmatter, license field, file structure). `releaser.py` is the **only** tool that **actually runs your CLI** — compile + import + `--help` smoke test — to prove it boots. It catches "looks perfect, crashes on run" skills that every other linter misses. That functional verification is our moat.
+Skill-lint / agent-skill-linter / @effectorhq/skill-lint / jeremyknows/publish-skills only check **paperwork** (frontmatter, license field, file structure). `releaser.py` is the **only** tool that **actually runs your CLI** — compile + import + `--help` smoke test — to prove it boots. It catches "looks perfect, crashes on run" skills that every other linter misses. That functional verification is our differentiator.
 
-竞品（含 skill-creator）只查"纸面合规"：frontmatter、license 字段、文件结构。`releaser.py` 是**唯一**把你的 CLI **真正执行起来**（compile + import + `--help` 烟测）证明它能启动的工具——专门兜住"格式完美、一跑就崩"的技能。★功能级验证就是我们的护城河。
+竞品（含 skill-creator）只查"纸面合规"：frontmatter、license 字段、文件结构。`releaser.py` 是**唯一**把你的 CLI **真正执行起来**（compile + import + `--help` 烟测）证明它能启动的工具——专门兜住"格式完美、一跑就崩"的技能。★功能级验证就是我们的差异化价值。
 
 ### Competitor comparison / 竞品对比
 
@@ -29,8 +29,8 @@ Skill-lint / agent-skill-linter / @effectorhq/skill-lint / jeremyknows/publish-s
 | 市场缺口情报（gap/curate） | ❌ | ❌ | ❌ | ✅ **该造什么主动告诉你** |
 | 长尾诊断（diagnose） | ❌ | 静态 | ❌ | ✅ **症状→根因→修复** |
 | 上架前清单（preflight） | ❌ | 部分 | ❌ | ✅ **市场定制清单** |
-| 链式传播徽章（badge） | ❌ | ❌ | ❌ | ✅ **每个使用者变分发节点** |
-| 可执行工具 + 测试 | ❌ | ❌ | ❌ | ✅ **CLI + pytest（77 全绿）** |
+| 链回徽章（badge） | ❌ | ❌ | ❌ | ✅ **便于引用与致谢** |
+| 可执行工具 + 测试 | ❌ | ❌ | ❌ | ✅ **CLI + pytest（78 全绿）** |
 | 发布侧治理（registry/recheck） | ❌ | ❌ | ❌ | ✅ **状态层 + 生命周期** |
 
 ---
@@ -41,15 +41,15 @@ Skill-lint / agent-skill-linter / @effectorhq/skill-lint / jeremyknows/publish-s
 
 `cli-skill-release` 补上这一环：
 
-| 别人帮你「写文档」 | 它帮你「发出去 + 被找到 + 扩散」 |
+| 别人帮你「写文档」 | 它帮你「发出去 + 被找到 + 链回致谢」 |
 |---|---|
 | 给你清单，你自己照着点 | **主动扫描陷阱 + 0-100 就绪分** |
 | 格式过了，一跑就崩 | **★功能级验证真跑 CLI，崩不了** |
 | 不知道市场缺什么 | **gap / curate 告诉你该造什么** |
 | 发完即终 | **registry / recheck 持续治理** |
-| 没人帮你传 | **badge 链式传播，每个用户变节点** |
+| 没人帮你传 | **badge 链回，便于引用致谢** |
 
-一句话：**如果你只想照文档发技能，竞品够用；如果你要在乎发得稳、被找到、能扩散，用 cli-skill-release。**
+一句话：**如果你只想照文档发技能，竞品够用；如果你要在乎发得稳、被找到、能引用致谢，用 cli-skill-release。**
 
 ```bash
 python releaser.py promote --path .   # 一键生成推广素材（含 30 秒电梯演讲 EN+中文）
@@ -72,9 +72,9 @@ python releaser.py doctor --path .
 python releaser.py validate --path ./my-skill          # 0-100 就绪分 + 功能验证
 python releaser.py diagnose --symptom "LICENSE 显示 Other"   # 长尾诊断
 python releaser.py preflight --market clawhub          # 上架前检查清单
-python releaser.py badge --path . --output readiness-badge.svg   # 链式传播徽章
-python releaser.py promote --path .                    # 宣传工具箱
-python releaser.py release --path . --dry-run          # 近一键发布情报
+python releaser.py badge --path . --output readiness-badge.svg   # 链回徽章
+python releaser.py promote --path .                    # 发布说明工具箱
+python releaser.py release --path . --dry-run          # 人工导入情报
 ```
 
 ---
@@ -90,9 +90,9 @@ python releaser.py release --path . --dry-run          # 近一键发布情报
 | `gap [--roots ...]` | **市场情报**：本机覆盖 + 组合缺口 / market gap intelligence |
 | `selfcheck [--path .]` | 零依赖校验：扫 import / zero-dep check |
 | `bump [--type patch]` | 升版本号 + 补 CHANGELOG / bump version |
-| `release --path .` | git 推送 + 近一键 / clawhub CLI 真一键 / push + publish intel |
-| `badge --path <dir>` | **★链式传播**：就绪分徽章 SVG + 链回片段 / readiness badge |
-| `promote [--path <dir>]` | **★宣传工具箱**：徽章+电梯演讲+社媒文案 / promo toolkit |
+| `release --path .` | git 推送(需 `--push`) + clawhub 发布(需 `--publish`) / push + publish intel |
+| `badge --path <dir>` | **★链回徽章**：就绪分徽章 SVG + 链回片段 / readiness badge |
+| `promote [--path <dir>]` | **★发布说明工具箱**：徽章+要点说明+社媒文案 / promo toolkit |
 | `diagnose --symptom "..."` | **★长尾诊断**：症状→根因→修复 / symptom→root-cause→fix |
 | `preflight [--market clawhub]` | **★上架前清单**：市场定制 / market-specific checklist |
 | `registry [list\|show\|add]` | **★状态层**：已发布技能账本 / published-skill ledger |
@@ -131,11 +131,11 @@ The SKILL.md `description` is the vector-search match surface; `tags` decide adj
 
 ---
 
-## Chain propagation / 链式传播（一个人下载，全网分发）
+## Back-link badge / 链回徽章（便于引用与致谢）
 
-Every user runs `badge` and pastes the readiness badge into their skill's README. The badge links back to this page. A visitor clicks → uses the tool → publishes their skill → pastes the badge → the chain grows. One download, the whole network distributes for you.
+Every user runs `badge` and pastes the readiness badge into their skill's README. The badge links back to this page. A visitor clicks → uses the tool → if they publish their own skill, they may paste the badge too — natural referencing and attribution. One download, organic referencing.
 
-每个使用者跑一次 `badge`，把 readiness 徽章贴进自己技能的 README，徽章链回本页。访客点入 → 用工具 → 发技能 → 再贴徽章 → 链越铺越长。一次下载，全网替你分发。
+每个使用者跑一次 `badge`，把 readiness 徽章贴进自己技能的 README，徽章链回本页。访客点入 → 用工具 → 若发布自己的技能，也可贴同一徽章——形成自然的引用与致谢。一次下载，自发式引用。
 
 ## License / 许可证
 MIT-0. Zero dependency (standard library only). 完整中文手册见 [`SKILL.md`](SKILL.md)，英文手册见 [`SKILL.en.md`](SKILL.en.md)。

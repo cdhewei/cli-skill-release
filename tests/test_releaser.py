@@ -284,7 +284,8 @@ def test_release_dry_run_no_git(tmp_path):
 def test_release_dry_run_skips_push(tmp_path):
     out = gen_skill(tmp_path)
     r = run(["release", "--path", out, "--dry-run"])
-    assert "跳过推送" in r.stdout or "跳过 git" in r.stdout
+    assert "dry-run" in r.stdout
+    assert "推送" in r.stdout  # dry-run 明确跳过推送
 
 
 # ---------------- scaffold ----------------
@@ -483,12 +484,33 @@ def test_validate_json_bench_structure():
     assert payload["bench"]["gap"] == 0
 
 
-def test_release_api_token_graceful(tmp_path):
+def test_release_no_remote_action_without_flags(tmp_path, monkeypatch):
+    """安全保证：未显式传 --push / --publish 时，release 绝不触碰远端。"""
+    calls = []
+
+    real_run = subprocess.run
+
+    def spy(*a, **k):
+        if a and isinstance(a[0], list):
+            calls.append(a[0])
+        return real_run(*a, **k)
+
+    monkeypatch.setattr(subprocess, "run", spy)
     out = gen_skill(tmp_path)
-    r = run(["release", "--path", out, "--dry-run", "--api-token", "FAKE_TOKEN"])
+    r = run(["release", "--path", out, "--dry-run"])
     assert r.returncode == 0
-    assert "无公开 REST/网页 publish 端点" in r.stdout
-    assert "人工导入" in r.stdout
+    joined = [" ".join(c) for c in calls]
+    assert not any("push" in c for c in joined), "release 不应发起 git push: %s" % joined
+    assert not any("publish" in c for c in joined), "release 不应发起 clawhub publish: %s" % joined
+
+
+def test_release_publish_flag_triggers_cli(tmp_path, monkeypatch):
+    """显式 --publish 才会调用 clawhub publish（且需本机已装 CLI 并登录）。"""
+    monkeypatch.setattr(R, "_clawhub_publish", lambda *a, **k: (False, "未安装 clawhub CLI，回退人工导入"))
+    out = gen_skill(tmp_path)
+    r = run(["release", "--path", out, "--publish"])
+    assert r.returncode == 0
+    assert "clawhub publish" in r.stdout
 
 
 # ---------------- 1.6.0 新能力：功能验证 / 门禁 / 透明评分 / 组合缺口 ----------------
@@ -669,13 +691,13 @@ def test_preflight_default_generic():
     assert "就绪分" in r.stdout
 
 
-def test_release_cli_fallback(tmp_path):
+def test_release_default_manual_import(tmp_path):
     out = gen_skill(tmp_path)
-    # dry-run + --no-cli：跳过 git 推送与 CLI 发布，仍构造人工导入情报
-    r = run(["release", "--path", out, "--dry-run", "--no-cli"])
+    # 默认（无 --push/--publish）：只构造人工导入步骤，不触碰远端
+    r = run(["release", "--path", out, "--dry-run"])
     assert r.returncode == 0, r.stderr
     assert "导入" in r.stdout
-    assert "近一键" in r.stdout or "Publish" in r.stdout
+    assert "Publish" in r.stdout
 
 
 def test_clawhub_publish_not_installed(tmp_path):
@@ -777,7 +799,7 @@ def test_release_auto_registers(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(R, "LEDGER_PATH", str(tmp_path / "ledger.json"))
     out = gen_skill(tmp_path)
     rc = R.cmd_release(_ns(path=out, remote="origin", branch="main", message=None,
-                           dry_run=True, api_token=None, no_cli=True))
+                           dry_run=True, push=False, publish=False))
     assert rc == 0
     data = R._load_ledger()
     assert "demo_cli_skill" in data["entries"], "release 应自动登记到账本"
@@ -790,7 +812,7 @@ def test_release_cli_success_registers(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(R, "_clawhub_publish", lambda *a, **k: (True, "published via CLI"))
     out = gen_skill(tmp_path)  # 非 git 仓库，2a 推送自动跳过；2b 走 monkeypatch 的成功分支
     rc = R.cmd_release(_ns(path=out, remote="origin", branch="main", message=None,
-                           dry_run=False, api_token=None, no_cli=False))
+                           dry_run=False, push=False, publish=True))
     assert rc == 0
     data = R._load_ledger()
     assert "demo_cli_skill" in data["entries"], "clawhub CLI 成功也应登记到账本"

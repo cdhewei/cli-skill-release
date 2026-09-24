@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.2
+version: 1.9.3
 author: 何巍
 license: MIT-0
 description: >
@@ -15,12 +15,12 @@ description: >
   把"以 Python CLI 形式交付的 WorkBuddy 技能做成可发布项目并上架"的全流程固化。
   核心是零依赖 releaser.py：validate 主动扫描发布陷阱并给 0-100 就绪分（含★功能级验证真跑 CLI）、
   inventory 治理本机技能、gap 市场缺口、selfcheck 零依赖、scaffold 起项目、bump 升版本、
-  release 推送+近一键/可选 clawhub CLI 真一键、badge 链式传播徽章、promote 宣传工具箱、
+  release 推送(需--push)/发布(需--publish)、badge 链回徽章（便于引用致谢）、promote 发布说明工具箱、
   diagnose 长尾诊断（症状→根因→修复）、preflight 市场定制上架清单。
   当用户说"构建/发布技能""技能上架""发布技能""publish skill""上架 skill""技能发布前检查清单"
   "校验技能能不能发""技能质量门禁""skill CI gate""LICENSE 显示 Other""CI 一直红""pytest exit code 2"
   "零依赖 Python 工具""技能搜不到"时触发。
-  本技能是 skill-creator（写技能）的**发布阶段搭档**：它管"写好"，本技能管"发出去 + 懂市场 + 帮你被找到 + 链式传播"。
+  本技能是 skill-creator（写技能）的**发布阶段搭档**：它管"写好"，本技能管"发出去 + 懂市场 + 帮你被找到 + 链回致谢"。
 description_zh: "零依赖 Python CLI 技能发布工程：releaser.py validate(就绪分)/diagnose(长尾诊断)/preflight(上架清单)/badge(链式徽章)/发布"
 description_en: "Release engineering for zero-dependency Python CLI skills: validate(score)/diagnose/preflight/badge/publish. Pre-publish checklist, is my skill ready to publish, ClawHub publish guide, skill discoverability."
 tags: [publish, skill-publishing, pre-publish-checklist, clawhub, agent-skills, quality-gate, ci, license, mit-0, zero-dependency, python, release]
@@ -44,6 +44,15 @@ metadata:
 > find-skills++ 用 AST 扫描 / 离线搜索 / 生命周期治理主动管理 agent 技能；
 > 本工具用 `validate` / `inventory` / `gap` / `selfcheck` 主动管理"技能能否可靠发布 + 市场该造什么"。
 
+> **🔒 安全与隐私声明（Security & Privacy）**
+> 本工具是**纯本地、零依赖**的发布工程助手，**默认不做任何远程操作**：
+> - 除你**显式传入 `--push`**（推送到 git 远端）或 `--publish`（通过你本机已登录的 clawhub CLI 发布）外，`release` 只做本地提交 + 打印人工导入步骤，**绝不静默触碰远端**。
+> - **不读取、不传输任何凭据**：无 `--api-token` 之类凭据形参，不存储任何密钥，不会把 token / 密码发往任何服务器。
+> - **无隐藏网络外联**：代码不含有 `urllib` / `requests` / `socket` 外联；文档里的 `api.github.com/.../license` 只是供你**自行核验** LICENSE 的公开查询地址，工具本身不调用。
+> - **只读扫描**：`inventory` / `gap` / `curate` 仅**只读**扫描你本机已安装的技能目录，数据不出本机。
+> - **账本本地化**：`registry` 账本只写入你 home 下的本地 `ledger.json`，不上传。
+> - **无命令注入面**：所有 `subprocess` 调用均为显式参数列表（无 `shell=True`、无字符串拼接命令）。
+
 ---
 
 ## 0. 何时用本技能（含与 skill-creator 的边界）
@@ -62,7 +71,7 @@ metadata:
 | 核心问题 | 怎么写好一个技能 | 怎么把 CLI 工具可靠地发到市场 + 该造什么 |
 | 执行体 | `init_skill.py`（生成文档） | **`releaser.py`（17 个子命令，真能跑）** |
 | 主动能力 | 无 | validate 扫陷阱+就绪分 / inventory 治理 / gap 市场情报 / selfcheck 查依赖 |
-| CI / LICENSE / 上架 | 不涉及 | 模板 + 规则 + 排障 SOP + release 近一键导入情报（见 §3） |
+| CI / LICENSE / 上架 | 不涉及 | 模板 + 规则 + 排障 SOP + release 人工导入情报（见 §3） |
 
 ---
 
@@ -79,10 +88,10 @@ metadata:
 | `gap [--roots ...]` | **市场情报：本机覆盖 + 组合缺口**（+ `--scan-json` 消费 find-skills++ 真实市场数据，交叉出"市场有/你缺"） | （独有：市场侧） |
 | `selfcheck [--path .]` | 零依赖校验：扫 import 比对 `sys.stdlib_module_names` | — |
 | `bump [--type patch]` | 升 SKILL.md 版本号 + 补 CHANGELOG | — |
-| `release --path .` | git 推送 + **clawhub CLI 真一键（或构造 ClawHub 近一键导入情报）** | — |
-| `badge --path <dir>` | **★链式传播：基于就绪分生成 readiness 徽章 SVG + 链回片段** | （独有：传播引擎） |
-| `promote [--path <dir>]` | **★宣传工具箱：徽章区+电梯演讲+社媒文案+链式玩法** | （独有：获客） |
-| `diagnose --symptom "..."` | **★长尾诊断：症状→根因→修复（直接回答用户会搜的长尾问题）** | （独有：搜索即获客） |
+| `release --path .` | git 推送(需 `--push`) + **clawhub 发布(需 `--publish`)（或构造 ClawHub 人工导入情报）** | — |
+| `badge --path <dir>` | **★链回徽章：基于就绪分生成 readiness 徽章 SVG + 链回片段** | （独有：引用致谢） |
+| `promote [--path <dir>]` | **★发布说明工具箱：徽章区+要点说明+社媒文案+链回玩法** | （独有：获客） |
+| `diagnose --symptom "..."` | **★长尾诊断：症状→根因→修复（直接回答用户会搜的长尾问题）** | （独有：覆盖长尾搜索） |
 | `preflight [--market clawhub]` | **★市场定制上架前检查清单（回答"发布前检查清单"类搜索）** | （独有：清单即内容） |
 | `registry [list\|show\|add]` | **★状态层：已发布技能账本（release 成功自动登记）** | （独有：治理状态） |
 | `recheck [<slug>]` | **★生命周期：再校验已发布技能，报告漂移/弃用** | （独有：持续治理） |
@@ -90,7 +99,7 @@ metadata:
 | `curate [--roots ...]` | **★供给侧策展：主动告诉生态该造什么（升级版 gap）** | （独有：主动分发） |
 | `doctor [--path <dir>]` | 自检本工具；或对目标目录跑 validate | 自检门 |
 
-> **碾压定位**：竞品（含 skill-creator）只给"文档"，你照着做；本工具**替你执行校验/治理/脚手架/推送，并用 `gap` 告诉你市场该造什么**——这是 find-skills++ 之外的空白赛道。
+> **差异化定位**：竞品（含 skill-creator）只给"文档"，你照着做；本工具**替你执行校验/治理/脚手架/推送，并用 `gap` 告诉你市场该造什么**——这是 find-skills++ 之外的空白赛道。
 
 ---
 
@@ -120,7 +129,7 @@ python releaser.py validate --path ./my-skill --rubric      # 透明评分：权
 | **★import** | 10 | **入口模块可 import（无 import-time 崩溃）** |
 | **★--help 烟测** | 14 | **入口 `--help` 烟测通过（CLI 真能 boot）** |
 
-> **★功能验证是护城河**：skill-lint / agent-skill-linter / @effectorhq/skill-lint / Skill Validator 等竞品只查 paperwork，**没有任何一个把你的 CLI 真正执行起来证明它能 boot**。这是 releaser 独有的"engine 级"验证。
+> **★功能验证是差异化价值**：skill-lint / agent-skill-linter / @effectorhq/skill-lint / Skill Validator 等竞品只查 paperwork，**没有任何一个把你的 CLI 真正执行起来证明它能 boot**。这是 releaser 独有的"engine 级"验证。
 
 `--mode cli` 跳过 frontmatter / skill-card 检查，服务**任意**零依赖 Python CLI 项目；`--mode package` 进一步泛化到**任意零依赖 Python 包**（再加打包清单 `pyproject.toml/setup.py/setup.cfg` 检测，信息项不计分）。
 加 `--json` 输出机器可读报告（`{path,mode,score,summary,items[,bench][,rubric]}`），可直接被 CI / 其他工具 / **市场闭环消费**；`--bench` 时附 `bench` 字段，`--rubric` 时附 `rubric` 字段（各维度权重+理由，分数可被审计）。
@@ -147,7 +156,7 @@ python releaser.py gap
 # 或指定根：python releaser.py gap --roots C:/Users/win/.workbuddy/skills
 ```
 扫描本机已装技能，按 8 大类目（Developer Tools / Security / AI & ML / Data / Productivity / Web / Finance / Content）归类计数，报告**完全空白类目（缺口）**与**单薄类目（可补强）**，并对每个缺口给出 `scaffold` 建议命令。
-加 `--scan-json <file>` 可**消费 find-skills++ 导出的真实市场扫描数据**（JSON 数组，每项 `{name, categories?, keywords?, description?}`），把"本机启发式"升级为「真实在售缺口」情报——这是 build 飞轮的**独有护城河**：find-skills++ 扫缺口 → 本工具 `scaffold` → `validate` → `release` → 被 find-skills++ 检索推荐，数据回流。单个工具可复制，**闭环不可复制**。
+加 `--scan-json <file>` 可**消费 find-skills++ 导出的真实市场扫描数据**（JSON 数组，每项 `{name, categories?, keywords?, description?}`），把"本机启发式"升级为「真实在售缺口」情报——这是 build 飞轮的**独有价值**：find-skills++ 扫缺口 → 本工具 `scaffold` → `validate` → `release` → 被 find-skills++ 检索推荐，数据回流。单个工具可复制，**完整的闭环更难被复制**。
 
 ### 2.4 selfcheck —— 零依赖校验
 ```bash
@@ -167,18 +176,16 @@ python releaser.py bump --path . --type minor
 ```
 升 `version` 并在 `CHANGELOG.md` 加条目（无则新建）。
 
-### 2.7 release —— 推送 + 近一键 / clawhub CLI 真一键
+### 2.7 release —— 本地提交 + 人工导入步骤（远程动作需显式授权）
 ```bash
-python releaser.py release --path . --remote origin --branch main
-# 不想真推：python releaser.py release --path . --dry-run
-# 禁用 clawhub CLI 直发、强制人工导入：--no-cli
-# 预留令牌（REST 端点仍不存在，接收后当前仍走人工导入）：--api-token <token>
+python releaser.py release --path .                 # 默认：本地提交 + 打印人工导入步骤（不推送、不发布）
+python releaser.py release --path . --dry-run        # 只生成导入步骤，不提交
+python releaser.py release --path . --push           # 显式授权：git push 到远端
+python releaser.py release --path . --publish        # 显式授权：经本机已登录的 clawhub CLI 发布
 ```
-先 `validate` 给就绪度提醒 → `git add/commit/push` → 分两条路径：
-- **英文生态真一键**：若本机已 `npm i -g clawhub` 且 `clawhub login` 过，release 会探测并直调 `clawhub publish`（合法真一键，无需再点网页）；
-- **人工导入情报**（默认/未装 CLI/加 `--no-cli`）：自动解析仓库地址、Display/Slug、推荐分类（按关键词归类取前 3）、Topics（自动截断到 ≤48 字符），你登录 ClawHub 后粘贴仓库、确认预填项、点一次 Publish 即上线。
-> **诚实说明**：ClawHub 无公开 REST/网页 publish 端点（无法代填 OAuth），但官方 npm CLI 是合法真一键路径；网页"Publish"按钮仍需你登录会话点一次。这已比"看文档自己点"的竞品快一个量级。
-> `--api-token <token>` 已预留：REST 端点公开前，令牌接收后当前仍走人工导入（情报已预填）。
+**安全默认**：`release` 默认**不触碰远端**——只做本地 `git add/commit` 并打印 ClawHub 人工导入步骤（自动解析仓库地址、Display/Slug、推荐分类、Topics≤48）。只有你显式加 `--push` 才会 `git push`、加 `--publish` 才会调用 `clawhub publish`（且要求本机已 `npm i -g clawhub` 并 `clawhub login`）。任何远端写入都需要你明确的命令行授权，工具不会静默推送或发布。
+
+> **诚实说明**：ClawHub 无公开 REST/网页 publish 端点（无法代填 OAuth），网页"Publish"按钮仍需你登录会话点一次；本机已装并登录 `clawhub` CLI 时，`--publish` 是合法的显式发布路径。这已比"看文档自己点"的竞品快一个量级。
 
 ### 2.8 doctor —— 自检
 ```bash
@@ -186,29 +193,29 @@ python releaser.py doctor            # 自检 cli-skill-release 自身（结构+
 python releaser.py doctor --path .   # 等价于 validate
 ```
 
-### 2.9 badge —— ★链式传播引擎（让每个使用者变成分发节点）
+### 2.9 badge —— ★链回徽章（便于引用与致谢）
 ```bash
 python releaser.py badge --path .                 # 打印 readiness 徽章 SVG + 链回片段
 python releaser.py badge --path . --output readiness-badge.svg   # 写 SVG 到仓库
 ```
 基于 `validate` 的就绪分生成 shields 风格徽章（绿≥90 / 黄 70-89 / 红<70），并输出一段可直接贴进
 你技能 README 的 markdown——**徽章图片自托管在你的仓库 raw 地址，点击链回本技能页**。
-这是整条"链式传播"的发动机：你每发一个技能都挂这张徽章，访问你仓库的人点进来即用，他再发技能也挂，链越铺越长。
+这是"链回徽章"的用意：你每发一个技能都挂这张徽章，访问你仓库的人点进来即可使用本工具，形成自然的引用与致谢。
 
 ### 2.10 promote —— ★宣传工具箱（把一次下载变成一次分发）
 ```bash
 python releaser.py promote --path .    # 给定路径则先展示就绪分
 ```
-一次性输出：① README 徽章区 ② 电梯演讲（"别人 lint 文档，我们 execute 引擎"）③ 社媒/社区可直接转发的文案 ④ 安装一行 ⑤ **链式传播玩法说明**。照着贴，就把我们送到你的受众面前。
+一次性输出：① README 徽章区 ② 要点说明（"别人 lint 文档，我们 execute 引擎"）③ 社媒/社区可直接转发的文案 ④ 安装一行 ⑤ **链回玩法说明**。照着贴，即可把本工具介绍给你的受众。
 
-### 2.11 diagnose —— ★长尾功能：症状→根因→修复（搜索即获客）
+### 2.11 diagnose —— ★长尾功能：症状→根因→修复（覆盖长尾搜索）
 ```bash
 python releaser.py diagnose --list                       # 列出全部已知症状
 python releaser.py diagnose --symptom "LICENSE 显示 Other"
 python releaser.py diagnose --symptom "pytest exit code 2"
 python releaser.py diagnose --symptom "skill 搜不到"
 ```
-把"用户实际会搜的长尾问题"映射成根因+修复——**这是"搜索即获客"的发动机**：有人搜
+把"用户实际会搜的长尾问题"映射成根因+修复——**这正好覆盖用户的长尾搜索**：有人搜
 "skill LICENSE 显示 Other" / "pytest exit code 2" / "CI 一直红" / "技能搜不到"，我们 README 里的这些
 短语被搜索引擎/ClawHub 索引 → 点进来 → 跑 diagnose 即得答案。竞品（jeremyknows/publish-skills 等）
 只给静态清单，我们给"可执行 + 可诊断"。已知症状覆盖：LICENSE 显示 Other、pytest exit code 2、
@@ -234,7 +241,7 @@ python releaser.py registry show cli-skill-release      # 查看单条记录
 # release 成功会自动登记；也可手动：
 python releaser.py registry add my-skill --name "My" --repo https://github.com/me/my-skill --version 1.2.0 --score 100 --market clawhub
 ```
-`release` 每次发布（无论 clawhub CLI 真一键还是人工导入）都会把技能登记进本地账本（默认 `~/.workbuddy/cli-skill-release/ledger.json`，可用 `RELEASER_LEDGER` 覆盖）。这让工具**跨多次运行持有"已发布技能账本"**——从一次性校验器变成发布侧的**治理者**（对标 find-skills++ 的状态层 / 全生命周期治理）。
+`release` 每次发布（无论 clawhub CLI 发布还是人工导入）都会把技能登记进本地账本（默认 `~/.workbuddy/cli-skill-release/ledger.json`，可用 `RELEASER_LEDGER` 覆盖）。这让工具**跨多次运行持有"已发布技能账本"**——从一次性校验器变成发布侧的**治理者**（对标 find-skills++ 的状态层 / 全生命周期治理）。
 
 ### 2.14 recheck —— ★生命周期：再校验 / 漂移治理（持续治理）
 ```bash
@@ -247,7 +254,7 @@ python releaser.py recheck my-skill         # 只复核某一个
 ```bash
 python releaser.py selfdemo
 ```
-当场对自己仓库运行每一个能力（validate / selfcheck / badge / preflight / diagnose / registry / gap / recheck）并打印演示摘要，**主张即演示**：证明"别人 lint 文档，我们 execute 引擎"不是口号，是已验证事实。对标 find-skills++ 的 `smoke.py`（全量自证）——碾压级信任不靠叙述，靠当场跑给你看。
+当场对自己仓库运行每一个能力（validate / selfcheck / badge / preflight / diagnose / registry / gap / recheck）并打印演示摘要，**主张即演示**：证明"别人 lint 文档，我们 execute 引擎"不是口号，是已验证事实。对标 find-skills++ 的 `smoke.py`（全量自证）——可验证的信任不靠叙述，靠当场跑给你看。
 
 ### 2.16 curate —— ★供给侧策展：主动告诉生态该造什么（升级版 gap）
 ```bash
@@ -258,7 +265,7 @@ python releaser.py curate --scan-json market.json   # 叠加 find-skills++ 真�
 
 ---
 
-## 5. 如何让本技能被找到 + 链式传播（设计即分发）
+## 5. 如何让本技能被找到 + 链回致谢
 
 本技能不止"自己好用"，更要**主动被找到、一直被需要、自己扩散**。这套机制写进工具本身：
 
@@ -266,7 +273,7 @@ python releaser.py curate --scan-json market.json   # 叠加 find-skills++ 真�
 2. **被人类找到**：ClawHub/SkillHub 上架优化（MIT-0、3 分类、Topics≤48）+ 徽章在每个使用者仓库可见（口碑曝光）。
 3. **一直被需求**：发布与每次更新都要重跑 `validate`/`gate`/`badge`——它是发布流水线的**必经环节**，不是一次性下载；徽章也要随版本刷新，形成习惯依赖。
 4. **真能解决问题**：★功能级验证（compile+import+--help 真跑 CLI）挡住"格式完美一跑就崩"，是竞品无人做的硬价值。
-5. **链式传播（理想态）**：`badge` 让每个用户在其技能仓库挂链回徽章 → 下一个技能作者点入 → 再挂 → 一人下载，全网分发。配 `promote` 工具箱，使用者零成本成为我们的推广员。
+5. **链回徽章**：`badge` 让用户在自己的技能仓库挂一张就绪分徽章，点击链回本技能页，便于他人引用与致谢。配 `promote` 工具箱，使用者可据此撰写发布说明。
 
 #### 5.1 中文怎么被找到 / 英文怎么被找到（基于实测的检索机理）
 
@@ -280,7 +287,7 @@ python releaser.py curate --scan-json market.json   # 叠加 find-skills++ 真�
 - **杠杆 3：GitHub topics 喂外部索引器**（SkillsMP / skillsdirectory / claudeskills.info）。发布时 `gh repo edit --add-topic agent-skills claude-skills codex-skills skill-md ai-agents`。
 - **自然语长尾触发**：英文用户爱搜 "Is this skill ready to publish?" / "What am I missing before I push this skill to GitHub?" / "Audit this skill against the Agent Skills spec"——这些短语已进入我们 `description` 与 README 的 FAQ 标题。
 
-#### 5.2 长尾词与长尾功能（让"搜索即获客"成立）
+#### 5.2 长尾词与长尾功能（文档覆盖常见搜索短语）
 
 **长尾词（中文）**：技能发布前检查清单、ClawHub 上架教程、skill LICENSE 显示 Other 怎么办、pytest exit code 2 修复、技能 CI 一直红、agent 技能发布流水线、技能质量门禁、发布就绪分、技能徽章、零依赖 Python 发布、技能搜不到怎么办。
 
@@ -290,9 +297,9 @@ python releaser.py curate --scan-json market.json   # 叠加 find-skills++ 真�
 - `diagnose`：症状→根因→修复，直接回答上述长尾搜索（竞品只给静态清单，我们给可执行诊断）。
 - `preflight`：市场定制上架清单，回答"发布前检查清单"类搜索；清单本身贴进 README 即被索引。
 - `README.md`：用长尾问题做 H2/H3 标题 + 双语，被搜索引擎/ClawHub/GitHub 索引。
-- `release --no-cli` 关闭时回退人工导入；装了 `clawhub` CLI 则英文生态**真一键**发布。
+- `release` 默认只做本地提交 + 打印人工导入步骤；显式 `--push` 才推送、`--publish` 才经 clawhub CLI 发布。
 
-> 这是"设计即分发"：技能的文档里直接教用户怎么帮我们传播，比任何外部广告都持久。
+> 文档即说明：技能文档清楚说明如何引用与致谢本工具，便于使用者理解与传播。
 
 #### 5.3 体系升级：从"发布工具"到"发布侧治理系统"（对标 find-skills++）
 
@@ -305,7 +312,7 @@ v1.9.0 把 cli-skill-release 从"一次性发布工具"升级为"发布侧治理
 | **E 自证底座** | `selfdemo` | 主张即演示，信任不靠叙述（对标 smoke.py） |
 | **F 供给侧策展** | `curate` | 主动告诉生态该造什么，从被动到主动 |
 
-> **护城河本质**：find-skills++ 占"发现侧治理位"，我们通过 v1.9.0 补上"发布侧治理位"。两个治理位一旦接通（C/D 双向活通道：让 find-skills++ 读取本工具的 readiness 信号 + 本工具消费其市场数据），才是真正不可复制的闭环——**单工具可抄，双向治理闭环抄不了**。C/D 需 find-skills++ 打通接口 + 你的授权，本期已预留 `releaser.py gap --scan-json` 与账本数据结构作为对接基座。
+> **可持续价值**：find-skills++ 占"发现侧治理位"，我们通过 v1.9.0 补上"发布侧治理位"。两个治理位一旦接通（C/D 双向活通道：让 find-skills++ 读取本工具的 readiness 信号 + 本工具消费其市场数据），才是更完整的闭环。C/D 需 find-skills++ 打通接口 + 你的授权，本期已预留 `releaser.py gap --scan-json` 与账本数据结构作为对接基座。
 
 ---
 
@@ -349,9 +356,9 @@ CI 里 `python main.py doctor --path .` 时，`doctor` 子命令**必须真定�
 
 ### 3.4.2 确证"已上架"的核验法（搜索索引滞后）
 - `clawhub search <slug>` 对新上架技能**可能不立即回显**（索引滞后，只回别的含相同词的技能）——**搜不到 ≠ 没上架**。
-- 确证上架用 OG 图接口：`https://clawhub.ai/og/skill?v=10&slug=<slug>&owner=<owner>`
-  返回 **HTTP 200 + image/png（约 200KB）** 即真上架（该接口只为库里真实存在的技能出图）。
-- 页面 `og:title` 应为 `<slug> — ClawHub`、`og:description` 含 `Agent skill by @<owner>`；并加载 `InstallCopyButton` 模块（已发布专属 UI）。
+- **权威核验用注册表接口**：`clawhub inspect <owner>/<slug>`（免登录，公开技能可用）返回完整元数据即真上架；`clawhub search <slug>` 也能回 `@owner DisplayName installs/60d`。
+- ⚠️ **不要**用 OG 图接口（`https://clawhub.ai/og/skill?...`）判断上架：该接口对**任何** slug（含不存在的假 slug）都返回 HTTP 200 + 一张占位图，**不能作为"已上架"证据**。
+- 页面 `og:title` 应为 `<slug> — ClawHub`、`og:description` 含 `Agent skill by @<owner>`；技能审核通过后页面才会从占位壳变为真实技能页。
 
 ### 3.5 CI 排障 SOP（看不到日志：403 / 需 admin）
 1. `git ls-remote origin HEAD` 确认远程实际部署到的提交（本地 `ahead N` = 有 N 个没推）。
