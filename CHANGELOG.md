@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [1.9.1] — 2026-09-24 · 文档沉淀（发布管道实战 gotcha 增补，无代码改动）
+
+### 沉淀（本轮两个技能双端上架实战中验证、此前文档未覆盖的硬知识）
+- §3.4.1 ClawHub CLI 实操：Windows 须调 `.cmd` 包装器；`whoami`/`search`/`login --token` 用法；分类固定 8 选、强制满 3。
+- §3.4.2 确证"已上架"核验法：ClawHub 搜索索引滞后（搜不到 ≠ 没上架）；用 `og/skill?v=10&slug=&owner=` 接口回 200 image/png 即真上架。
+- §3.6 增补：GitHub API **密码鉴权已停用**（建库只能 SSH 推已存在仓库 / PAT / 网页自建）；clawhub `.cmd` 包装器；pytest **批量删除守卫** SystemExit 1 不影响结果。
+- **双语推广件（本回合新增，无代码改动）**：README.md 重写为推广级双语（英文 TL;DR + 徽章行 + 竞品对比表 + 双语卖点/长尾）；新增 `SKILL.en.md` 全英文手册（17 子命令 + 陷阱速查 + 发现机制）；生成真实 `readiness-badge.svg`（100/100）提交进仓库，README 徽章链回 ClawHub 已上架页。frontmatter 双语元数据（`description_zh`/`description_en`/`keywords` 中英混合/`xiaping_*`）此前已具备。
+
 ## [1.9.0] — 2026-09-23 · 体系升级（发布侧治理系统：状态层 + 生命周期 + 自证底座 + 供给侧策展）
 
 ### 新增（对标 find-skills++ 治理模型，落实体系级支柱 A/B/E/F——纯代码可落地）

@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.0
+version: 1.9.1
 author: 何巍
 license: MIT-0
 description: >
@@ -338,6 +338,21 @@ CI 里 `python main.py doctor --path .` 时，`doctor` 子命令**必须真定�
 6. **发布后核验循环**：含 `<main>.py`+`scripts/`、License 显示 MIT-0、SkillHub 镜像可搜到；
    新提交会让线上 listing 显示 "Import is out of date"（已发布技能不受影响，想同步新文件再点一次 Re-run preview）。
 
+### 3.4.1 ClawHub CLI 实操（本机）
+- 安装：`npm i -g clawhub`（本机装在 managed node workspace：`node/workspace/node_modules/.bin/clawhub`）。
+- **Windows 必须调 `.cmd` 包装器**（`clawhub.cmd`），直接调 node bin 会被 PATH 错误导崩。
+- 查登录态：`clawhub whoami`（未登录回 `Not logged in`）。
+- 查上架状态：`clawhub search <slug>`（不需登录，直接回 `@owner DisplayName installs/60d`）。
+- 真一键：`clawhub login --token <token>`（也支持 device flow）后 `clawhub publish`。
+- 没有登录态时 `release` 走"人工导入情报"回退（见 §2.7），由你在 ClawHub 网页点一次 Import。
+- ClawHub **分类固定 8 选、强制满 3**：Developer Tools / Security / AI & ML / Data / Productivity / Web / Finance / Content。
+
+### 3.4.2 确证"已上架"的核验法（搜索索引滞后）
+- `clawhub search <slug>` 对新上架技能**可能不立即回显**（索引滞后，只回别的含相同词的技能）——**搜不到 ≠ 没上架**。
+- 确证上架用 OG 图接口：`https://clawhub.ai/og/skill?v=10&slug=<slug>&owner=<owner>`
+  返回 **HTTP 200 + image/png（约 200KB）** 即真上架（该接口只为库里真实存在的技能出图）。
+- 页面 `og:title` 应为 `<slug> — ClawHub`、`og:description` 含 `Agent skill by @<owner>`；并加载 `InstallCopyButton` 模块（已发布专属 UI）。
+
 ### 3.5 CI 排障 SOP（看不到日志：403 / 需 admin）
 1. `git ls-remote origin HEAD` 确认远程实际部署到的提交（本地 `ahead N` = 有 N 个没推）。
 2. 公开 API 查 LICENSE：`api.github.com/repos/{owner}/{repo}/license`。
@@ -349,6 +364,11 @@ CI 里 `python main.py doctor --path .` 时，`doctor` 子命令**必须真定�
 - **bash shim 偶尔 PATH 丢失** → 用 Python **绝对路径**调用脚本。
 - **phantom 缓存** → 关键改动用 Python 直读磁盘校验（`open(path, encoding='utf-8')`）。
 - **推送可能被沙箱静默拦截**（输出空、远程没动）→ 放开沙箱重推，再 `git ls-remote` 确认远程 HEAD 已前进。
+- **GitHub API 密码鉴权已停用**（实测 `POST /user/repos` 返回 `401 Requires authentication`）：建仓库只能走
+  ① 已认证 SSH（只能推**已存在**仓库，**不能建**）② **PAT（classic，repo 范围）** ③ 用户在 GitHub 网页点 New repository 自建空仓库。密码不能用于 API / 建库。
+- **clawhub CLI 在 Windows 要调 `.cmd` 包装器**：直接调 node bin 会被 PATH 错误导崩（见 §3.4.1）。
+- **pytest 批量删除守卫**：teardown 清临时目录可能触发 `SystemExit: 1`（"Exception ignored"），**不影响结果**
+  （returncode 0、全部 passed）；跑测试用独立 subprocess 把结果写文件再读，避免守卫杀掉结果写入。
 
 ---
 
