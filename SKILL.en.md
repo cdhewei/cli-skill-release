@@ -2,7 +2,7 @@
 name: cli-skill-release (English manual)
 slug: cli-skill-release
 displayName: CLI Skill Release Engineering (releaser.py multi-capability CLI + scaffold + CI + LICENSE + publish + market intelligence)
-version: 1.9.1
+version: 1.9.2
 author: 何巍 (He Wei)
 license: MIT-0
 description: >
@@ -120,7 +120,7 @@ Prints per skill: `skill | lic field | LICENSE | CI | doctor`, with "ready N / n
 python releaser.py gap
 python releaser.py gap --roots C:/Users/win/.workbuddy/skills
 ```
-Scans installed skills, buckets them into 8 categories, reports **empty categories (gaps)** and **thin categories (reinforceable)**, with `scaffold` suggestions. Add `--scan-json <file>` to **consume find-skills++ exported real market data** (JSON array of `{name, categories?, keywords?, description?}`) — upgrading "local heuristic" into "real on-sale gap" intel. This is the unique moat of the build flywheel: find-skills++ scans gaps → this tool `scaffold` → `validate` → `release` → re-found by find-skills++ → data回流. Single tools are copyable; the closed loop is not.
+Scans installed skills, buckets them into 8 categories, reports **empty categories (gaps)** and **thin categories (reinforceable)**, with `scaffold` suggestions. Add `--scan-json <file>` to **consume find-skills++ exported real market data** (JSON array of `{name, categories?, keywords?, description?}`) — upgrading "local heuristic" into "real on-sale gap" intel. This is the unique moat of the build flywheel: find-skills++ scans gaps → this tool `scaffold` → `validate` → `release` → re-found by find-skills++ → data flows back. Single tools are copyable; the closed loop is not.
 
 ### 2.4 selfcheck — zero-dependency check
 ```bash

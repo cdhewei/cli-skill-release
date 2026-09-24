@@ -52,8 +52,7 @@ Skill-lint / agent-skill-linter / @effectorhq/skill-lint / jeremyknows/publish-s
 一句话：**如果你只想照文档发技能，竞品够用；如果你要在乎发得稳、被找到、能扩散，用 cli-skill-release。**
 
 ```bash
-python releaser.py elevator   # 30 秒电梯演讲（EN+中文）
-python releaser.py promote --path .   # 一键生成推广素材
+python releaser.py promote --path .   # 一键生成推广素材（含 30 秒电梯演讲 EN+中文）
 ```
 
 ---

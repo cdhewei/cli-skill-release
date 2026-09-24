@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [1.9.2] — 2026-09-24 · 三审文档修正（无代码改动）
+
+### 校对发现并修复 2 处文档缺陷
+- README「30 秒了解它」代码示例误写 `python releaser.py elevator`（`elevator` 非子命令；30 秒电梯演讲由 `promote` 产出）→ 改为 `python releaser.py promote --path .`。
+- `SKILL.en.md` §2.3 遗留中文「data回流」→ 改为「data flows back」（英文手册不应残留中文）。
+
+### 验证（三审）
+- 子命令计数：SKILL.md / SKILL.en.md / README 三处均写 17，与代码 `build_parser` 实际注册 17 个一致。
+- pytest **77 passed**（与 README 徽章「77 tests」一致）；`validate` 12/12 PASS、100/100；`selfdemo` 8/8；`promote` 正常产出电梯演讲。
+- `releaser.py elevator` 经代码核验**确不存在**（17 子命令清单中无 elevator），证实 README 原写法为断链。
+
 ## [1.9.1] — 2026-09-24 · 文档沉淀（发布管道实战 gotcha 增补，无代码改动）
 
 ### 沉淀（本轮两个技能双端上架实战中验证、此前文档未覆盖的硬知识）

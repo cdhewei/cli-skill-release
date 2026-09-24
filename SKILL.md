@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.1
+version: 1.9.2
 author: 何巍
 license: MIT-0
 description: >
