@@ -2,7 +2,7 @@
 name: cli-skill-release (English manual)
 slug: cli-skill-release
 displayName: CLI Skill Release Engineering (releaser.py multi-capability CLI + scaffold + CI + LICENSE + publish + market intelligence)
-version: 1.9.4
+version: 1.9.5
 author: 何巍 (He Wei)
 license: MIT-0
 description: >
@@ -39,7 +39,7 @@ keywords: cli, python, zero-dependency, skill, release, publish-skill, release-s
 | Dimension | skill-creator (built-in · writes) | cli-skill-release (this skill · ships + intelligence) |
 |---|---|---|
 | Core question | How to write a good skill | How to reliably publish a CLI tool to market + what to build |
-| Executable | `init_skill.py` (generates docs) | **`releaser.py` (17 subcommands, actually runs)** |
+| Executable | `init_skill.py` (generates docs) | **`releaser.py` (19 subcommands, actually runs)** |
 | Active capability | none | validate trap-scan + readiness score / inventory governance / gap market intel / selfcheck dep-check |
 | CI / LICENSE / publish | not involved | templates + rules + troubleshooting SOP + release manual import intel (see §3) |
 
@@ -71,6 +71,7 @@ Run inside the cli-skill-release skill directory (zero dependency, stdlib only):
 | `selfcheck [--path .]` | zero-dep check: scan imports vs `sys.stdlib_module_names` | — |
 | `bump [--type patch]` | bump SKILL.md version + append CHANGELOG | — |
 | `release --path .` | git push (needs `--push`) + **clawhub publish (needs `--publish`) (or build ClawHub manual import intel)** | — |
+| `publish --github --clawhub` | **★multi-registry orchestrator: explicit per-site authorization to publish to GitHub/ClawHub (security gate first, no remote by default)** | (unique: multi-registry dispatch) |
 | `badge --path <dir>` | **★back-link badge: readiness badge SVG + back-link snippet** | (unique: reference & attribution) |
 | `promote [--path <dir>]` | **★promo toolkit: badge zone + elevator pitch + social copy + back-link playbook** | (unique: reach) |
 | `diagnose --symptom "..."` | **★long-tail diagnosis: symptom→root-cause→fix** | (unique: covers long-tail searches) |
@@ -188,6 +189,28 @@ python releaser.py release --path . --dry-run          # release hard-blocks at 
 - **false positives**: add `.releaser-secret-allow` at repo root with allowlist regexes (use with care — this means you've confirmed no real creds there).
 
 > **Leak response**: if a real credential is already in the repo, you must **① immediately rotate/revoke it at the service** (e.g. QQ mailbox SMTP auth-code) ② `git filter-repo --path <file> --invert-paths` to scrub history ③ force-push to overwrite the old remote history. Rotate the password before deleting code — plaintext in old history is irreversible once leaked.
+
+### 2.7.2 publish — ★multi-registry orchestrator (one command to dispatch a corrected/new skill to multiple registries)
+
+> **Design principle (answers the ClawHub false-positive + your "proofread/review/approve" requirement)**: security gate first, explicit per-site authorization, no remote by default. This carries forward the v1.9.3+ "never silently write remote" remediation — there is **no "push-everything-without-a-flag" path**, structurally preventing a repeat of the malicious flag.
+
+`publish` is the unified entry point for "after a correct update or a new skill, automatically upload to multiple registries":
+
+```bash
+python releaser.py publish --path .                      # proofread + preview only, touches no remote (anti silent-send)
+python releaser.py publish --github                      # explicit: push to GitHub (git add/commit/push)
+python releaser.py publish --clawhub                     # explicit: publish to ClawHub via your logged-in clawhub CLI
+python releaser.py publish --github --clawhub            # both (the in-scope set this round)
+python releaser.py publish --github --clawhub --dry-run  # preview each site's action only
+python releaser.py publish --github --force-history      # force-push when history was rewritten by git filter-repo (--force-with-lease)
+```
+
+**Order (each step can be blocked by the gate)**:
+1. **Proofread (validate)**: run the publish-readiness scan (incl. ★security red-line credential scan), output 0-100;
+2. **Approve (secretscan)**: on a hardcoded credential/auth-code hit → **hard-block publishing to any site**, never commit/send (confirm no false positive to force with `--allow-secret-risk`, dangerous);
+3. **Dispatch**: each target needs its explicit flag (`--github` / `--clawhub` / `--xiaping` / `--workbuddy`), untouched otherwise; GitHub uses `git push` (normal fast-forward, `--force-history` when needed), ClawHub uses `clawhub publish` (needs CLI installed + logged in, else falls back to manual import intel).
+
+> **Xiaping / WorkBuddy are reserved this round**: `--xiaping` (xiaping.coze.site, Coze ecosystem) and `--workbuddy` (open.workbuddy.cn SkillHub) only print manual-upload links this round (neither has a public API). Once their open endpoints/bots are wired in, the same explicit-authorization model makes them truly automatic with no usage change.
 
 ### 2.8 doctor — self-check
 ```bash
@@ -317,6 +340,7 @@ In CI, `python main.py doctor --path .` — the `doctor` subcommand **must reall
 - [ ] `doctor` and `doctor --path .` exit 0
 - [ ] LICENSE is MIT-0 + ASCII holder name; public API confirms `spdx_id=MIT-0`
 - [ ] CI workflow exists and badge points to it; pytest output teed to Step Summary
+- [ ] multi-registry: `publish --path .` (preview only) first, then `publish --github --clawhub` (explicit, gate-first)
 - [ ] `git ls-remote` confirms all fix commits pushed (no `ahead N`)
 - [ ] no `skill-card.md` residue repo-wide
 - [ ] publish: License MIT-0, 3 categories picked, Topics whole-string ≤48 chars

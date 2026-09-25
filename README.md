@@ -92,6 +92,7 @@ python releaser.py release --path . --dry-run          # 人工导入情报
 | `selfcheck [--path .]` | 零依赖校验：扫 import / zero-dep check |
 | `bump [--type patch]` | 升版本号 + 补 CHANGELOG / bump version |
 | `release --path .` | git 推送(需 `--push`) + clawhub 发布(需 `--publish`) / push + publish intel |
+| `publish --github --clawhub` | **★多站上架编排**：显式逐站授权上传 GitHub/ClawHub（安全闸门前置）/ multi-registry orchestrator |
 | `badge --path <dir>` | **★链回徽章**：就绪分徽章 SVG + 链回片段 / readiness badge |
 | `promote [--path <dir>]` | **★发布说明工具箱**：徽章+要点说明+社媒文案 / promo toolkit |
 | `diagnose --symptom "..."` | **★长尾诊断**：症状→根因→修复 / symptom→root-cause→fix |
@@ -128,7 +129,10 @@ Cause: `tests/` imports need `conftest.py` sys.path injection (CLI injects at mo
 MIT-0 forced, `skill-card.md` is reserved (rename it), Topics whole-string ≤48 chars, account age ≥1 week, pick 3 categories, README required, text-only files. `releaser.py release` builds the import intel; if `clawhub` CLI is installed + logged in, it publishes for real.
 
 ### 凭据/密码/授权码会不会被发到 GitHub？ / Will my credentials leak to GitHub?
-No. `releaser.py secretscan` (and the `validate`/`release` security-redline gate, weight 12) **mandatorily scans the whole skill for hardcoded passwords / auth-codes / API tokens before publish**; on a hit it FAILs and `release` hard-blocks commit/push/publish. Environment-variable references (`os.environ.get(...)` / `${...}`) are treated as safe. Reports are **redacted** — plaintext is never echoed. If a real secret was already committed, rotate it immediately, then `git filter-repo --path <file> --invert-paths` to scrub history.
+No. `releaser.py secretscan` (and the `validate`/`release` security-redline gate, weight 12) **mandatorily scans the whole skill for hardcoded passwords / auth-codes / API tokens before publish**; on a hit it FAILs and `release`/`publish` hard-block commit/push/publish. Environment-variable references (`os.environ.get(...)` / `${...}`) are treated as safe. Reports are **redacted** — plaintext is never echoed. If a real secret was already committed, rotate it immediately, then `git filter-repo --path <file> --invert-paths` to scrub history.
+
+### 如何一次上传到多站（GitHub / ClawHub / 虾评 / WorkBuddy）？ / How do I upload to multiple registries at once?
+Use `publish` — the explicit per-site orchestrator. `releaser.py publish --path .` only proofreads + previews (touches nothing remote); add `--github` and/or `--clawhub` to explicitly authorize each site (`publish --github --clawhub`). **No flag = no remote write**, and the security red-line gate always runs first, so a corrected/new skill can be dispatched safely without silent egress. 虾评(xiaping.coze.site) and WorkBuddy SkillHub(open.workbuddy.cn) are reserved this round (no public API); their flags print manual-upload links and will become truly automatic once their endpoints/bots are wired in.
 
 ### 技能搜不到 / make my skill discoverable
 The SKILL.md `description` is the vector-search match surface; `tags` decide adjacency; GitHub topics feed external indexers (SkillsMP / skillsdirectory). Write bilingual trigger phrases into `description`, add `tags`, and set repo topics: `agent-skills claude-skills codex-skills skill-md ai-agents`.

@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## [1.9.5] — 2026-09-25 · 多站上架编排（publish：正确更新/新技能后，一键分发 GitHub + ClawHub）
+
+### 新增：★多站上架编排 `publish`（显式逐站授权，安全闸门前置）
+- **新增子命令 `publish`**：统一入口，把"正确更新或有新技能后，自动上传到多站"做成一条命令。
+- **显式逐站授权**（回应 ClawHub 误判 + 用户的"校对/审核/审定"要求）：每个目标需对应开关
+  —— `--github`（推送到 GitHub）、`--clawhub`（经本机已登录的 clawhub CLI 发布）、
+  `--xiaping` / `--workbuddy`（本轮预留）。**未开任何开关 → 绝不触碰任何远程**（防静默外发）。
+- **安全闸门前置**：先跑 `validate`（校对，含 ★安全红线凭据扫描）+ `secretscan`（审定）；
+  命中硬编码凭据/授权码 → **直接拒绝上架任何站点**，绝不入库/外发（`--allow-secret-risk` 可强制，危险）。
+- **GitHub 推送**：`git add/commit/push`；普通 fast-forward，历史曾被 `git filter-repo` 重写、远端本地分叉时
+  加 `--force-history`（用 `--force-with-lease` 防覆盖他人提交）。
+- **ClawHub 发布**：本机已装并登录 `clawhub` CLI 时真发布，否则回退人工导入情报（与 `release` 一致）。
+- **虾评 / WorkBuddy 本轮为预留位**：`--xiaping`（xiaping.coze.site）、`--workbuddy`（open.workbuddy.cn SkillHub）
+  两者均无公开 API，本轮只给人工上传链接；待接入开放接口/机器人后同样的授权模型即可真自动。
+- 子命令数 17 → **19**；`pytest` 84 → **88 passed**（新增 4 项 publish 断言：无开关不触远程 / dry-run 预览 / 凭据闸门拦截 / 预留位打印）。
+
 ## [1.9.4] — 2026-09-25 · 安全红线强化（凭据泄露硬闸门，校对/审核/审定环节消灭"不该进 GitHub 的东西"）
 
 ### 新增：★安全红线 secretscan（主动消灭凭据泄露）

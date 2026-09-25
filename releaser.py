@@ -6,11 +6,12 @@ find-skills++ 用 AST 扫描/离线搜索/生命周期治理主动管理 agent �
 本工具用 validate/inventory/selfcheck 主动管理"技能能否可靠发布"，并进一步提供
 gap（市场情报）、发布就绪分、release（近一键发布）等碾压级能力。
 
-子命令（17 个，全零依赖、真能跑）：
+子命令（19 个，全零依赖、真能跑）：
   scaffold   生成带 CI 的完整可发布骨架（委托同目录 scaffold.py）
   validate   主动扫描一个技能目录，报告全部发布陷阱 + 0-100 就绪分（--mode skill|cli|package）
   gate       CI 门禁：就绪分低于阈值即非零退出（readiness-as-a-service）
   secretscan ★安全红线：扫描硬编码密码/授权码/API Token（禁止入库）
+  publish    ★多站上架编排：显式逐站授权上传 GitHub/ClawHub（安全闸门前置，默认不碰远程）
   inventory  扫描本机已装技能，逐条报告"能否发、差什么"（治理）
   gap        市场情报：扫描本机技能归类，报告稀疏类目为市场缺口并给出 scaffold 建议
   selfcheck  零依赖校验：扫 import，比对 sys.stdlib_module_names
@@ -1209,6 +1210,148 @@ def cmd_release(args):
 
 
 # --------------------------------------------------------------------------
+# publish —— 多站上架编排（显式逐站授权；安全闸门前置）
+# --------------------------------------------------------------------------
+
+def _publish_github(d, remote, branch, message, force, dry_run):
+    """★GitHub：本地提交 + 推送。仅当 --github 显式授权才触碰远端；绝不静默。
+
+    --force-history：历史曾被 git filter-repo 重写后，远端与本地分叉，需强推
+    （默认用 --force-with-lease 防覆盖他人提交；常规更新走普通 fast-forward 推送）。
+    """
+    if dry_run:
+        is_git = os.path.isdir(os.path.join(d, ".git"))
+        note = "" if is_git else "（当前非 git 仓库，正式运行需先 `git init` + 配置 origin）"
+        return True, "[dry-run] 将：git add -A → commit → git push %s %s%s" % (
+            remote, branch, " --force-with-lease" if force else "") + note
+    is_git = os.path.isdir(os.path.join(d, ".git"))
+    if not is_git:
+        return False, "当前不是 git 仓库，无法推送到 GitHub（先 `git init` + 配置 origin）。"
+    subprocess.run(["git", "-C", d, "add", "-A"], check=False)
+    st = subprocess.run(["git", "-C", d, "status", "--porcelain"],
+                        capture_output=True, text=True, check=False)
+    if st.stdout.strip():
+        msg = message or ("chore: publish via releaser (%s)" % datetime.date.today().isoformat())
+        subprocess.run(["git", "-C", d, "commit", "-m", msg], check=False)
+    else:
+        print("[publish] GitHub: 无改动，未提交。")
+    push = ["git", "-C", d, "push"]
+    if force:
+        push.append("--force-with-lease")
+    push += [remote, branch]
+    r = subprocess.run(push, capture_output=True, text=True, check=False)
+    out = (r.stdout or r.stderr).strip()
+    if r.returncode == 0:
+        return True, "已推送到 GitHub(%s/%s): %s" % (remote, branch, out[:160])
+    # 非快进失败：提示用 --force-history（历史曾被重写）
+    if "non-fast-forward" in out or "fetch first" in out or "rejected" in out:
+        return False, ("普通推送被拒(非快进)：远端与本地分叉。若历史曾被 git filter-repo 重写，"
+                       "请加 --force-history 强推；否则先 `git pull --rebase`。\n" + out[:200])
+    return False, "GitHub 推送失败: " + out[:200]
+
+
+def _publish_xiaping(d, dry_run):
+    """★虾评（xiaping.coze.site）：预留位（本轮未接入，无公开 API）。
+
+    暂不触碰远程，仅给出下一步人工链接，待接入 Coze bot / 开放上传接口后真自动。
+    """
+    if dry_run:
+        return True, "[dry-run] 虾评：将打包 Coze 技能格式并打开 xiaping.coze.site 上传页。"
+    return False, ("虾评(xiaping.coze.site) 本轮未接入自动上传（无公开 API）。"
+                  "请手动：登录 xiaping.coze.site → 上传技能 → 走众测转正流程。"
+                  "后续将接入 Coze bot 实现真自动。")
+
+
+def _publish_workbuddy(d, dry_run):
+    """★WorkBuddy SkillHub（open.workbuddy.cn）：预留位（本轮未接入，无公开 API）。
+
+    暂不触碰远程，仅给出下一步人工链接，待接入开放平台上传接口后真自动。
+    """
+    if dry_run:
+        return True, "[dry-run] WorkBuddy：将打成 ≤3MB ZIP 并打开 open.workbuddy.cn 上传页。"
+    return False, ("WorkBuddy SkillHub(open.workbuddy.cn) 本轮未接入自动上传（无公开 API）。"
+                  "请手动：打包 ≤3MB ZIP(SKILL.md + references/scripts) → 开放平台『发布新技能』"
+                  "→ 填 description_zh/en、version、author → 提交审核。后续将接入开放平台接口真自动。")
+
+
+def cmd_publish(args):
+    """★多站上架编排：正确更新/新技能后，一键把技能发布到多站（默认不碰任何远程）。
+
+    设计原则（回应 ClawHub malicious 误判 + 用户的『校对/审核/审定』要求）：
+      · 安全闸门前置：先跑 validate(校对) + secretscan(审定)，凭据命中即拦截，绝不入库/外发；
+      · 显式逐站授权：每个目标需对应开关(--github/--clawhub/--xiaping/--workbuddy)，
+        未开的站绝不触碰；没有任何『无开关自动推全站』的路径，杜绝静默远程写入；
+      · 本轮只做 GitHub + ClawHub（你已选）；虾评/WorkBuddy 为预留位，仅给人工链接。
+    """
+    d = args.path or "."
+    has_skill = os.path.isfile(os.path.join(d, "SKILL.md"))
+    if not has_skill:
+        print("[publish] ✗ 当前目录无 SKILL.md，不是技能目录，退出。")
+        return 1
+    # 1) 校对 + 审核：validate
+    print("[publish] ① 校对: validate（发布就绪扫描）")
+    validate_skill(d)
+    _print_report()
+    # 1b) 审定：安全红线
+    allow_risk = getattr(args, "allow_secret_risk", False)
+    has_secret = any(r[0] == "FAIL" and r[1].startswith("安全红线") for r in REPORT)
+    if has_secret and not allow_risk:
+        print("\n[publish] ⛔ 安全红线拦截：存在硬编码凭据/授权码，拒绝上架任何站点！")
+        print("[publish] 处置：改为环境变量/密钥库后重跑；确认无误报用 --allow-secret-risk 强制（危险）。")
+        return 1
+    if has_secret and allow_risk:
+        print("\n[publish] ⚠ --allow-secret-risk 已强制越过安全红线（请确认无真实凭据入库）。")
+    # 2) 确定上架目标（显式授权）
+    targets = []
+    for flag, name in ((args.github, "github"), (args.clawhub, "clawhub"),
+                       (args.xiaping, "xiaping"), (args.workbuddy, "workbuddy")):
+        if flag:
+            targets.append(name)
+    if not targets:
+        print("\n[publish] 未指定任何 --<站点> 开关，按设计不触碰任何远程（防静默外发）。")
+        print("[publish] 预览：可对以下目标显式授权上架 ——")
+        print("    python releaser.py publish --github            # 推送到 GitHub")
+        print("    python releaser.py publish --clawhub           # 发布到 ClawHub（需 clawhub CLI 登录）")
+        print("    python releaser.py publish --github --clawhub  # 两站一起（你选定的本轮范围）")
+        print("    # 预留：--xiaping / --workbuddy（本轮未接入）")
+        return 0
+    print("\n[publish] ② 上架目标（已显式授权）: " + ", ".join(targets))
+    # 3) 逐站上架
+    fm, _ = parse_frontmatter(os.path.join(d, "SKILL.md"))
+    slug = fm.get("slug") or os.path.basename(os.path.abspath(d))
+    name = fm.get("name") or slug
+    ver = fm.get("version") or "1.0.0"
+    any_ok = False
+    for t in targets:
+        print("\n[publish] ── 站点: %s ──" % t)
+        if t == "github":
+            ok, msg = _publish_github(d, args.remote, args.branch, args.message,
+                                     args.force_history, args.dry_run)
+        elif t == "clawhub":
+            ok, msg = _clawhub_publish(d, slug, name, ver, args.message)
+            if ok and not args.dry_run:
+                try:
+                    _ledger_add({"slug": slug, "name": name, "repo": _repo_url(d) or "",
+                                 "version": ver, "score": _score(), "market": "clawhub",
+                                 "path": os.path.abspath(d),
+                                 "published_at": datetime.date.today().isoformat(),
+                                 "last_checked": datetime.date.today().isoformat()})
+                except Exception:
+                    pass
+        elif t == "xiaping":
+            ok, msg = _publish_xiaping(d, args.dry_run)
+        elif t == "workbuddy":
+            ok, msg = _publish_workbuddy(d, args.dry_run)
+        else:
+            ok, msg = False, "未知目标"
+        status = "✓" if ok else "✗"
+        print("  [%s] %s" % (status, msg))
+        any_ok = any_ok or ok
+    print("\n[publish] 完成。GitHub/ClawHub 已真自动；虾评/WorkBuddy 为人工链接（本轮未接入）。")
+    return 0 if any_ok else 1
+
+
+# --------------------------------------------------------------------------
 # doctor —— 自检或委托 validate
 # --------------------------------------------------------------------------
 
@@ -1838,6 +1981,22 @@ def build_parser():
     r.add_argument("--allow-secret-risk", action="store_true",
                    help="危险：强制越过安全红线（仅当你确认无真实凭据入库、或文件已被 .gitignore 排除时）")
     r.set_defaults(func=cmd_release)
+
+    pb = sub.add_parser("publish", help="★多站上架编排：显式逐站授权上传 GitHub/ClawHub（安全闸门前置，默认不碰远程）")
+    pb.add_argument("--path", default=".")
+    pb.add_argument("--github", action="store_true", help="显式授权：推送 commits 到 GitHub 远端")
+    pb.add_argument("--clawhub", action="store_true", help="显式授权：通过本机已登录的 clawhub CLI 发布到 ClawHub")
+    pb.add_argument("--xiaping", action="store_true", help="预留：虾评(xiaping.coze.site)，本轮未接入，仅给人工链接")
+    pb.add_argument("--workbuddy", action="store_true", help="预留：WorkBuddy SkillHub(open.workbuddy.cn)，本轮未接入，仅给人工链接")
+    pb.add_argument("--remote", default="origin")
+    pb.add_argument("--branch", default="main")
+    pb.add_argument("--force-history", action="store_true",
+                   help="强制推送（历史曾被 git filter-repo 重写、远端本地分叉时必须；用 --force-with-lease 防覆盖）")
+    pb.add_argument("--message", default=None)
+    pb.add_argument("--dry-run", action="store_true", help="只预览各站动作，不提交/不推送/不发布")
+    pb.add_argument("--allow-secret-risk", action="store_true",
+                   help="危险：强制越过安全红线（仅当你确认无真实凭据入库时）")
+    pb.set_defaults(func=cmd_publish)
 
     d = sub.add_parser("doctor", help="自检本工具或对 --path 目标校验")
     d.add_argument("--path", default=None)

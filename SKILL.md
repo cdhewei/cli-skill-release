@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.4
+version: 1.9.5
 author: 何巍
 license: MIT-0
 description: >
@@ -71,7 +71,7 @@ metadata:
 | 维度 | skill-creator（内置·写） | cli-skill-release（本技能·发 + 情报） |
 |---|---|---|
 | 核心问题 | 怎么写好一个技能 | 怎么把 CLI 工具可靠地发到市场 + 该造什么 |
-| 执行体 | `init_skill.py`（生成文档） | **`releaser.py`（17 个子命令，真能跑）** |
+| 执行体 | `init_skill.py`（生成文档） | **`releaser.py`（19 个子命令，真能跑）** |
 | 主动能力 | 无 | validate 扫陷阱+就绪分 / inventory 治理 / gap 市场情报 / selfcheck 查依赖 |
 | CI / LICENSE / 上架 | 不涉及 | 模板 + 规则 + 排障 SOP + release 人工导入情报（见 §3） |
 
@@ -92,6 +92,7 @@ metadata:
 | `selfcheck [--path .]` | 零依赖校验：扫 import 比对 `sys.stdlib_module_names` | — |
 | `bump [--type patch]` | 升 SKILL.md 版本号 + 补 CHANGELOG | — |
 | `release --path .` | git 推送(需 `--push`) + **clawhub 发布(需 `--publish`)（或构造 ClawHub 人工导入情报）** | — |
+| `publish --github --clawhub` | **★多站上架编排：显式逐站授权上传 GitHub/ClawHub（安全闸门前置，默认不碰远程）** | （独有：多站分发） |
 | `badge --path <dir>` | **★链回徽章：基于就绪分生成 readiness 徽章 SVG + 链回片段** | （独有：引用致谢） |
 | `promote [--path <dir>]` | **★发布说明工具箱：徽章区+要点说明+社媒文案+链回玩法** | （独有：获客） |
 | `diagnose --symptom "..."` | **★长尾诊断：症状→根因→修复（直接回答用户会搜的长尾问题）** | （独有：覆盖长尾搜索） |
@@ -216,6 +217,28 @@ python releaser.py release --path . --dry-run          # release 在"审定"环�
 - **误报**在仓库根建 `.releaser-secret-allow` 写放行正则（谨慎使用——这等于你已确认该处无真实凭据）。
 
 > **泄露应急**：若已有真实凭据入库，必须 **① 立即到对应服务轮换/吊销**（如 QQ 邮箱 SMTP 授权码）② `git filter-repo --path <file> --invert-paths` 清历史 ③ 强推覆盖远端旧历史。换密码优先于删代码——旧历史里的明文凭据一旦泄露即不可逆。
+
+### 2.7.2 publish —— ★多站上架编排（正确更新/新技能后，一键分发多站）
+
+> **设计原则（回应 ClawHub 误判 + 你的"校对/审核/审定"要求）**：安全闸门前置、显式逐站授权、默认不碰任何远程。这与 v1.9.3 之后"绝不静默外发"的整改一脉相承——**没有任何"无开关自动推全站"的路径**，从机制上杜绝重蹈 malicious 覆辙。
+
+`publish` 是"正确更新或有新技能后，自动上传到多站"的统一入口：
+
+```bash
+python releaser.py publish --path .                      # 只跑校对+预览，不碰任何远程（防静默外发）
+python releaser.py publish --github                      # 显式授权：推送到 GitHub（git add/commit/push）
+python releaser.py publish --clawhub                     # 显式授权：经本机已登录的 clawhub CLI 发布到 ClawHub
+python releaser.py publish --github --clawhub            # 两站一起（本轮已接入范围）
+python releaser.py publish --github --clawhub --dry-run  # 只预览各站动作，不提交/不推送/不发布
+python releaser.py publish --github --force-history      # 历史曾被 git filter-repo 重写、远端本地分叉时强推（--force-with-lease）
+```
+
+**执行顺序（每步都可被闸门拦截）**：
+1. **校对**（validate）：先跑发布就绪扫描（含 ★安全红线凭据扫描），输出 0-100 分；
+2. **审定**（secretscan）：命中硬编码凭据/授权码 → **直接拒绝上架任何站点**，绝不入库/外发（确认无误报可用 `--allow-secret-risk` 强制，危险）；
+3. **分发**：每个目标需对应显式开关（`--github` / `--clawhub` / `--xiaping` / `--workbuddy`），未开的站绝不触碰；GitHub 走 `git push`（普通 fast-forward，必要时 `--force-history`），ClawHub 走 `clawhub publish`（需本机已装 CLI 并登录，否则回退人工导入情报）。
+
+> **虾评 / WorkBuddy 本轮为预留位**：`--xiaping`（xiaping.coze.site，Coze 生态）、`--workbuddy`（open.workbuddy.cn SkillHub）这轮**只给人工上传链接，未接入自动上传**（两者均无公开 API）。待接入对应开放接口/机器人后，同样的显式授权模型即可真自动，无需改使用方式。
 
 ### 2.8 doctor —— 自检
 ```bash
@@ -417,6 +440,7 @@ CI 里 `python main.py doctor --path .` 时，`doctor` 子命令**必须真定�
 - [ ] `doctor` 与 `doctor --path .` 退出 0
 - [ ] LICENSE 为 MIT-0 + ASCII 版权名；公开 API 确认 `spdx_id=MIT-0`
 - [ ] CI workflow 存在且徽章指向它；pytest 输出已 tee 到 Step Summary
+- [ ] 多站上架：先 `publish --path .`（仅预览）确认无误，再 `publish --github --clawhub`（显式授权，安全闸门前置）
 - [ ] `git ls-remote` 确认所有修复提交已推（无 `ahead N`）
 - [ ] 全仓无 `skill-card.md` 残留
 - [ ] 上架：License 选 MIT-0、3 分类已选、Topics 整段 ≤48 字符

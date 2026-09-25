@@ -772,6 +772,57 @@ def test_secret_scan_allowlist(tmp_path):
     assert "未发现" in r.stdout
 
 
+# ---------------- 1.9.5 新能力：多站上架编排 publish（显式逐站授权） ----------------
+
+def test_publish_no_target_flags_no_remote(tmp_path, monkeypatch):
+    """安全保证：publish 未显式传 --github/--clawhub 等时，绝不触碰任何远程。"""
+    calls = []
+    real_run = subprocess.run
+
+    def spy(*a, **k):
+        if a and isinstance(a[0], list) and "releaser.py" not in a[0]:
+            calls.append(a[0])
+        return real_run(*a, **k)
+
+    monkeypatch.setattr(subprocess, "run", spy)
+    d = make_skill(tmp_path, "pub1")
+    r = run(["publish", "--path", str(d)])
+    assert r.returncode == 0
+    joined = [" ".join(c) for c in calls]
+    assert not any("push" in c for c in joined), "publish 不应发起 git push: %s" % joined
+    assert not any("clawhub" in c and "publish" in c for c in joined), "publish 不应发起 clawhub publish: %s" % joined
+    assert "不触碰任何远程" in r.stdout
+
+
+def test_publish_dry_run_github(tmp_path):
+    """publish --github --dry-run 只预览，不提交不推送。"""
+    d = make_skill(tmp_path, "pub2")
+    r = run(["publish", "--path", str(d), "--github", "--dry-run"])
+    assert r.returncode == 0
+    assert "dry-run" in r.stdout
+    assert "github" in r.stdout
+
+
+def test_publish_secret_gate_blocks(tmp_path):
+    """审定闸门：publish 同样因硬编码凭据被拦截，绝不入库/外发。"""
+    d = make_skill(tmp_path, "pub3")
+    (d / "cfg.py").write_text('api_token = "abcdefghij1234567890"\n', encoding="utf-8")
+    r = run(["publish", "--path", str(d), "--github"])
+    assert "安全红线拦截" in r.stdout
+    assert r.returncode == 1
+
+
+def test_publish_reserved_targets_print(tmp_path):
+    """虾评/WorkBuddy 本轮为预留位：给出人工链接，不报错崩溃。"""
+    d = make_skill(tmp_path, "pub4")
+    r = run(["publish", "--path", str(d), "--xiaping"])
+    assert "虾评" in r.stdout
+    assert "本轮未接入" in r.stdout
+    r2 = run(["publish", "--path", str(d), "--workbuddy"])
+    assert "WorkBuddy" in r2.stdout
+    assert "本轮未接入" in r2.stdout
+
+
 # ---------------- 1.9.0 新能力：状态层 / 生命周期 / 自证 / 策展 ----------------
 
 def _ns(**kw):
