@@ -10,6 +10,7 @@ gap（市场情报）、发布就绪分、release（近一键发布）等碾压�
   scaffold   生成带 CI 的完整可发布骨架（委托同目录 scaffold.py）
   validate   主动扫描一个技能目录，报告全部发布陷阱 + 0-100 就绪分（--mode skill|cli|package）
   gate       CI 门禁：就绪分低于阈值即非零退出（readiness-as-a-service）
+  secretscan ★安全红线：扫描硬编码密码/授权码/API Token（禁止入库）
   inventory  扫描本机已装技能，逐条报告"能否发、差什么"（治理）
   gap        市场情报：扫描本机技能归类，报告稀疏类目为市场缺口并给出 scaffold 建议
   selfcheck  零依赖校验：扫 import，比对 sys.stdlib_module_names
@@ -60,7 +61,7 @@ REPORT = []  # (level, title, detail, weight)  weight=0 表示不计分的信息
 W = {
     "fm_fields": 8,     # frontmatter 含 name/version/license
     "lic_field": 4,     # license 字段为 MIT/MIT-0
-    "lic_spdx": 12,     # LICENSE 文件含可识别 SPDX
+    "lic_spdx": 8,      # LICENSE 文件含可识别 SPDX
     "lic_ascii": 6,     # 版权名为 ASCII（licensee 才不会判 Other）
     "no_card": 8,       # 全仓无 skill-card.md 保留名冲突
     "doctor": 10,       # doctor --path . 真跑退出 0
@@ -68,8 +69,9 @@ W = {
     "ref": 6,           # SKILL.md 引用文件真实存在
     "zero": 6,          # 零依赖
     "fn_compile": 8,    # 全部 .py 通过 compile（无语法错误）
-    "fn_import": 10,    # 入口模块可 import（无 import-time 崩溃）
-    "fn_smoke": 14,     # 入口 --help 烟测通过（CLI 真能 boot）
+    "fn_import": 6,     # 入口模块可 import（无 import-time 崩溃）
+    "fn_smoke": 10,     # 入口 --help 烟测通过（CLI 真能 boot）
+    "secret": 12,       # ★安全红线：全仓无硬编码凭据/授权码（防重演 v1.9.x 事故）
 }
 
 # 透明评分：每个维度的权重 + 理由（供 --rubric / --json.rubric，使分数可被审计、可被信任）
@@ -86,6 +88,7 @@ RATIONALE = {
     "fn_compile": "*功能验证：全部源码通过编译，无语法错误",
     "fn_import": "*功能验证：入口模块可 import，无 import-time 崩溃",
     "fn_smoke": "*功能验证：入口 --help 烟测通过，CLI 真能 boot（竞品无人做）",
+    "secret": "*安全红线：全仓无硬编码密码/授权码/API Token，防凭据泄露并被市场判 malicious",
 }
 
 
@@ -165,6 +168,17 @@ DIAGNOSE_KB = [
         "cause": "发布前没有量化标准，凭感觉上架 → 反复被拒。",
         "fix": "releaser.py validate 给 0-100 发布就绪分（含功能验证）；preflight 输出市场定制检查清单；"
                "直接回答 \"Is this skill ready to publish?\" / \"What am I missing before I push?\"。",
+    },
+    {
+        "id": "secret-leak",
+        "title": "密码/授权码/Token 不小心进 GitHub 了（泄露 + 被市场判恶意）",
+        "symptoms": ["password", "token", "secret", "凭据", "授权码", "泄露", "明文",
+                     "credential", "secret leak", "进了 github", "malicious", "硬编码", "smtp"],
+        "cause": "把密码/授权码/API Token 明文硬编码进技能文件并 commit+push 到公开 GitHub："
+                 "既造成凭据泄露，又被 ClawHub/SkillHub 安全扫描判 malicious 封禁（v1.9.x 真实事故）。",
+        "fix": "发布前用 `releaser.py secretscan --path .` 扫出全部硬编码凭据 → 改为环境变量(os.environ)/密钥库，"
+               "删除明文；已入库的须 `git filter-repo` 清历史并**立即轮换**泄露凭据；"
+               "validate/gate 已将凭据扫描设为强制 FAIL 闸门，release 会直接拒绝提交/推送/发布。",
     },
 ]
 
@@ -346,6 +360,186 @@ def detect_license(path):
     return spdx, non_ascii_holder
 
 
+# --------------------------------------------------------------------------
+# ★安全红线：密钥/授权码扫描（校对/审核/审定环节强制消灭"不该进 GitHub 的东西"）
+# --------------------------------------------------------------------------
+# 设计动因：v1.9.x 曾因技能目录混入明文 QQ SMTP 授权码（硬编码于 send_review_email.py）
+# 被 commit+push 到公开 GitHub，触发 ClawHub SkillSpector 判 malicious 并封禁。
+# 现把"凭据扫描"做成 validate / gate / release 的**强制 FAIL 闸门**：任何硬编码密码、
+# 授权码、API Token 在校对阶段就被拦下，绝不会进入 GitHub / ClawHub。
+#
+# 设计原则：宁可误报也要拦住真凭据；误报用仓库根目录的 .releaser-secret-allow 放行。
+# 报告里**绝不回显明文凭据**（一律脱敏）。
+
+# 1) 凭据赋值关键词：识别 `PASSWORD = "..."` / `api_key="..."` / `client_secret='...'` 等
+SECRET_ASSIGN_KEYS = (
+    "password", "passwd", "pwd", "secret", "token", "apikey", "api_key",
+    "access_token", "auth_token", "client_secret", "private_key", "privatekey",
+    "authorization_code", "auth_code", "smtp_password", "smtp_pass", "smtp_pwd",
+    "db_password", "database_password", "root_password", "admin_password",
+    "bearer", "credential", "credentials", "license_key", "activation_code",
+    "secret_key", "signing_key", "encryption_key", "api_secret",
+)
+
+# 2) 已知厂商令牌格式（高置信，无论上下文，命中即报）
+SECRET_TOKEN_PATTERNS = [
+    ("AWS Access Key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("GitHub PAT", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,}\b")),
+    ("Slack Token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{8,}\b")),
+    ("Google API Key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("Stripe Secret", re.compile(r"\bsk_(live|test)_[0-9A-Za-z]{16,}\b")),
+    ("OpenAI Key", re.compile(r"\bsk-[0-9A-Za-z]{20,}\b")),
+    ("OpenRouter Key", re.compile(r"\bsk-or-v1-[0-9A-Za-z]{64}\b")),
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\b")),
+    ("PEM Private Key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----")),
+    ("BasicAuth(user:pass@)", re.compile(r"\b[a-zA-Z0-9._%+\-]+:[a-zA-Z0-9._%+\-]{3,}@[a-zA-Z0-9.\-]+\b")),
+]
+
+# 明显占位/示例/环境引用（不报警）
+SECRET_SAFE_HINTS = (
+    "your-", "your_", "your.", "example", "sample", "dummy", "fake", "test",
+    "xxxx", "xxxxxxxx", "replace", "changeme", "changethis", "placeholder",
+    "token_here", "secret_here", "password_here", "redacted", "<", ">",
+    "none", "null", "none)", "***", "to-do", "todo", "mock",
+)
+# 环境变量引用（凭据应由运行时注入，不从仓库读）—— 这类赋值视为安全
+SECRET_ENV_REF_HINTS = (
+    "os.environ", "getenv", "environ[", "environ.get", "${", "{{",
+    "input(", "getpass", "secret_ref", "resolve_secret", "get_secret",
+)
+
+# 扫描的文件扩展名（.env 无论扩展名都扫）；令牌格式只在代码/配置类文件扫，避免 .md 误伤
+SECRET_SCAN_EXTS = {".py", ".js", ".ts", ".sh", ".env", ".json", ".yaml",
+                    ".yml", ".toml", ".txt", ".cfg", ".ini", ".md", ".rst"}
+SECRET_TOKEN_EXTS = {".py", ".js", ".ts", ".sh", ".env", ".json", ".yaml",
+                     ".yml", ".toml", ".txt", ".cfg", ".ini"}
+SECRET_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__",
+                    ".pytest_cache", ".mypy_cache"}
+# 扫描器自身的配置常量名（左侧标识符命中凭据关键词时跳过，避免自伤）
+SECRET_OWN_IDENTIFIERS = {
+    "secret_assign_keys", "secret_token_patterns", "secret_safe_hints",
+    "secret_scan_exts", "secret_token_exts", "secret_skip_dirs",
+    "secret_own_identifiers",
+}
+
+
+def _secret_looks_safe(val):
+    """值是否为明显占位/示例/环境引用——这类不算泄露，不报警。"""
+    low = (val or "").lower()
+    if len(low) < 6:
+        return True  # 太短无意义
+    for h in SECRET_SAFE_HINTS:
+        if h in low:
+            return True
+    if low.strip("\"' ") in SECRET_ASSIGN_KEYS:  # 恰好等于某个凭据关键词
+        return True
+    return False
+
+
+def _secret_extract_literal(s):
+    """抽取字符串中第一个『引号包裹』的字面量（凭据值）。无则返回 None。"""
+    m = re.search(r'''["']([^"']{1,256})["']''', s)
+    return m.group(1) if m else None
+
+
+def _secret_redact(s):
+    """脱敏：绝不回显明文。只留前 4 + 后 2 字符。"""
+    s = (s or "").strip().strip("\"'")
+    if len(s) <= 6:
+        return "••••"
+    return s[:4] + "…" + s[-2:]
+
+
+def _load_secret_allow(skill_dir, allow_file):
+    path = allow_file or os.path.join(skill_dir, ".releaser-secret-allow")
+    out = []
+    if os.path.isfile(path):
+        for ln in _read(path).splitlines():
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                try:
+                    out.append(re.compile(ln))
+                except re.error:
+                    pass
+    return out
+
+
+def _secret_ignored(allow, rel, line):
+    for pat in allow:
+        if pat.search(rel) or (line and pat.search(line)):
+            return True
+    return False
+
+
+def _secret_scan(skill_dir, allow_file=None):
+    """扫描技能目录，返回 [(level, title, detail)]（每条脱敏后的定位）。
+
+    设计原则：宁可误报也要拦住真凭据；误报用 .releaser-secret-allow 放行。
+    """
+    findings = []
+    allow = _load_secret_allow(skill_dir, allow_file)
+
+    files = []
+    for root, dirs, fns in os.walk(skill_dir):
+        dirs[:] = [d for d in dirs if d not in SECRET_SKIP_DIRS]
+        for fn in fns:
+            ext = os.path.splitext(fn)[1].lower()
+            if ext in SECRET_SCAN_EXTS or fn.startswith(".env"):
+                files.append(os.path.join(root, fn))
+
+    for f in files:
+        rel = os.path.relpath(f, skill_dir)
+        if _secret_ignored(allow, rel, ""):
+            continue
+        # a) .env 文件本身即风险（禁止入库）
+        if os.path.basename(f).startswith(".env"):
+            findings.append(("FAIL", "发现 .env 凭据文件（禁止入库）",
+                             "%s —— 移到仓库外或用 .gitignore 排除" % rel))
+            continue
+        text = _read(f)
+        ext = os.path.splitext(f)[1].lower()
+        # b) 已知令牌格式（仅代码/配置文件，.md 不扫）
+        if ext in SECRET_TOKEN_EXTS:
+            for name, pat in SECRET_TOKEN_PATTERNS:
+                for m in pat.finditer(text):
+                    snip = m.group(0)
+                    if _secret_looks_safe(snip):
+                        continue
+                    if _secret_ignored(allow, rel, snip):
+                        continue
+                    findings.append(("FAIL", "命中已知凭据格式: %s" % name,
+                                     "%s — %s" % (rel, _secret_redact(snip))))
+        # c) 硬编码凭据赋值（所有文本文件）：仅当『赋值左侧标识符』本身含凭据关键词才判，
+        #    避免文档/字符串里出现 password/token 等词、或引号值误伤（如本工具自身定义、中文说明）。
+        assign_re = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$')
+        colon_re = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.+?)\s*$')
+        for i, line in enumerate(text.splitlines(), 1):
+            m = assign_re.match(line)
+            if not m:
+                m = colon_re.match(line)
+            if not m:
+                continue
+            key = m.group(1).lower()
+            if key in SECRET_OWN_IDENTIFIERS:
+                continue
+            if not any(k in key for k in SECRET_ASSIGN_KEYS):
+                continue
+            rest = m.group(2)
+            # 环境变量引用视为安全（凭据由运行时注入，不入库）
+            if any(h in rest.lower() for h in SECRET_ENV_REF_HINTS):
+                continue
+            val = _secret_extract_literal(rest)
+            if not val:
+                continue
+            if _secret_looks_safe(val) or len(val) < 10:
+                continue
+            if _secret_ignored(allow, rel, line):
+                continue
+            findings.append(("FAIL", "疑似硬编码凭据赋值",
+                             "%s:%d — %s = %s" % (rel, i, m.group(1), _secret_redact(val))))
+    return findings
+
+
 def validate_skill(skill_dir, mode="skill", silent=False):
     """对一个技能/CLI 目录跑全套发布就绪检查，结果写入 REPORT。返回失败数。"""
     REPORT.clear()
@@ -471,6 +665,19 @@ def validate_skill(skill_dir, mode="skill", silent=False):
     # 8) ★功能级/可执行验证（竞品无人做）：compile + import + --help 烟测
     _functional_checks(skill_dir, mode, slug, has_skill)
 
+    # 9) ★安全红线：密钥/授权码扫描（校对环节强制消灭"不该进 GitHub 的东西"）
+    #    重演 v1.9.x：明文 QQ SMTP 授权码被 commit+push 触发 ClawHub 判 malicious。
+    #    本项在发布前（validate / gate / release）就 FAIL 拦截，绝不让凭据入库。
+    sec = _secret_scan(skill_dir)
+    if sec:
+        _add("FAIL", "安全红线：检测到 %d 处疑似硬编码凭据/授权码（禁止入库！）" % len(sec),
+             "运行 `python releaser.py secretscan --path .` 看明细；改为环境变量/密钥库后再发",
+             W["secret"])
+        for lv, title, detail in sec[:12]:
+            _add(lv, title, detail, 0)
+    else:
+        _add("PASS", "全仓无硬编码凭据/授权码（安全红线通过）", "", W["secret"])
+
     fails = sum(1 for r in REPORT if r[0] == "FAIL")
     return fails
 
@@ -592,6 +799,30 @@ def cmd_validate(args):
         if args.bench:
             _print_bench()
     return 1 if fails else 0
+
+
+def cmd_secretscan(args):
+    """★安全红线：专项扫描硬编码密码/授权码/API Token（独立于就绪分，供发布前单独把关）。
+
+    这是"校对/审核/审定"环节消灭凭据泄露的专用工具：宁可误报也要拦住真凭据，
+    误报在仓库根建 `.releaser-secret-allow` 写放行正则（谨慎使用）。
+    报告里**绝不回显明文**（一律脱敏）。
+    """
+    findings = _secret_scan(args.path, allow_file=args.allow_file)
+    print("=" * 56)
+    print("  releaser secretscan — 安全红线：密钥/授权码扫描")
+    print("=" * 56)
+    if not findings:
+        print("  ✓ 未发现硬编码凭据/授权码。可安全入库。")
+        return 0
+    print("  ⚠ 发现 %d 处疑似凭据（已脱敏，绝不回显明文）：" % len(findings))
+    for lv, title, detail in findings:
+        print("   [%s] %s — %s" % (lv, title, detail))
+    print("\n  处置：")
+    print("    ① 改为环境变量(os.environ)/密钥库，删除明文；")
+    print("    ② 已入库的须 git filter-repo 清历史，并**立即轮换**泄露凭据；")
+    print("    ③ 确认无误报可在仓库根建 .releaser-secret-allow 写放行正则（谨慎）。")
+    return 1
 
 
 def _print_rubric():
@@ -884,6 +1115,16 @@ def cmd_release(args):
     _print_report()
     if fails:
         print("[release] 有 %d 项 FAIL，建议先修复再发。\n" % fails)
+
+    # 1b) ★安全红线：硬编码凭据直接拒绝提交/推送/发布（审定闸门）
+    allow_risk = getattr(args, "allow_secret_risk", False)
+    has_secret = any(r[0] == "FAIL" and r[1].startswith("安全红线") for r in REPORT)
+    if has_secret and not allow_risk:
+        print("[release] ⛔ 安全红线拦截：存在硬编码凭据/授权码，拒绝提交/推送/发布！")
+        print("[release] 处置：改为环境变量/密钥库后重跑；确认无误报用 --allow-secret-risk 强制（危险）。")
+        return 1
+    if has_secret and allow_risk:
+        print("[release] ⚠ --allow-secret-risk 已强制越过安全红线（请确认无真实凭据入库）。")
     # 2) 本地提交（dry-run 不提交）；远程推送需显式 --push
     if not args.dry_run:
         if is_git:
@@ -1554,6 +1795,11 @@ def build_parser():
     v.add_argument("--rubric", action="store_true", help="输出评分权重与理由（透明评分，使分数可被审计）")
     v.set_defaults(func=cmd_validate)
 
+    ss = sub.add_parser("secretscan", help="★安全红线：扫描硬编码密码/授权码/API Token（禁止入库）")
+    ss.add_argument("--path", default=".")
+    ss.add_argument("--allow-file", default=None, help="自定义放行正则文件（默认 .releaser-secret-allow）")
+    ss.set_defaults(func=cmd_secretscan)
+
     g2 = sub.add_parser("gate", help="CI 门禁：就绪分低于阈值则非零退出（readiness-as-a-service）")
     g2.add_argument("--path", default=".")
     g2.add_argument("--mode", default="skill", choices=["skill", "cli", "package"])
@@ -1589,6 +1835,8 @@ def build_parser():
     r.add_argument("--push", action="store_true", help="显式授权：将本地提交推送到远端（默认不推送）")
     r.add_argument("--publish", action="store_true",
                    help="显式授权：通过本机已登录的 clawhub CLI 发布到 ClawHub（默认不发布，仅给出人工导入步骤）")
+    r.add_argument("--allow-secret-risk", action="store_true",
+                   help="危险：强制越过安全红线（仅当你确认无真实凭据入库、或文件已被 .gitignore 排除时）")
     r.set_defaults(func=cmd_release)
 
     d = sub.add_parser("doctor", help="自检本工具或对 --path 目标校验")

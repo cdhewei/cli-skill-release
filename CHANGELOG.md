@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## [1.9.4] — 2026-09-25 · 安全红线强化（凭据泄露硬闸门，校对/审核/审定环节消灭"不该进 GitHub 的东西"）
+
+### 新增：★安全红线 secretscan（主动消灭凭据泄露）
+- **新增独立子命令 `secretscan`**：专项扫描全仓硬编码密码 / 授权码 / API Token，**独立于就绪分**，供发布前单独把关。
+- **`validate` / `gate` / `release` 内置 secret 维度（权重 12）**：发布前强制扫描；命中即 FAIL，并**直接拒绝 `release` 的提交/推送/发布**（审定闸门），绝不让凭据有机会入库。
+- **扫描覆盖（宁可误报也要拦真凭据）**：① `.env` 文件本身即风险（禁止入库）；② 已知厂商令牌格式（AWS/GitHub/Slack/Google/Stripe/OpenAI/OpenRouter/JWT/PEM 私钥/`user:pass@host` BasicAuth）；③ 硬编码凭据赋值（`PASSWORD="..."` 等，仅当赋值左侧标识符含凭据关键词才判，避免文档/字符串误伤及扫描器自身被自伤）。
+- **安全设计**：环境变量引用（`os.environ.get(...)` / `os.getenv(...)` / `${VAR}` / `{{ secrets.X }}`）视为安全；报告**一律脱敏**（仅留前 4 + 后 2 字符），**绝不回显明文**；误报用仓库根 `.releaser-secret-allow` 写放行正则（谨慎）。
+- **应急指引**：已泄露须立即轮换/吊销凭据 → `git filter-repo --path <file> --invert-paths` 清历史 → 强推覆盖远端。
+
+### 文档
+- SKILL.md：「🔒 安全与隐私」声明新增安全红线硬闸门说明；命令总览与 validate 权重表新增 secret 维度（权重 12，合计仍为 100）；新增 §2.7.1 `secretscan` 专节；§4 发布清单新增 `secretscan` 步骤。
+- SKILL.en.md / README.md 同步。
+
+### 验证
+- pytest **84 passed**（新增 6 项凭据闸门断言：硬编码密码 FAIL、拦截 release、secretscan 命中且脱敏、环境变量引用放行、`.env` 命中、allowlist 放行；原有 78 + 新增 6）。
+- 技能自身 `validate` 13/13 PASS、100/100（无凭据误报）；`secretscan` 干净通过；`selfdemo` 8/8。
+
 ## [1.9.3] — 2026-09-24 · 安全整改（回应 ClawHub SkillSpector 误判 malicious.llm_malicious）
 
 ### 根因

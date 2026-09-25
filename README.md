@@ -84,7 +84,8 @@ python releaser.py release --path . --dry-run          # 人工导入情报
 | Subcommand | 作用 / What it does |
 |---|---|
 | `scaffold <name>` | 一键生成带 CI 的完整可发布骨架 / scaffold a CI-ready skeleton |
-| `validate --path <dir>` | **★杀手锏**：主动扫描 + 0-100 就绪分 + ★功能验证 / active scan + score + functional verify |
+| `validate --path <dir>` | **★杀手锏**：主动扫描 + 0-100 就绪分 + ★功能验证 + ★安全红线凭据扫描 / active scan + score + functional + secret verify |
+| `secretscan --path <dir>` | **★安全红线**：专项扫描硬编码密码/授权码/API Token（独立于就绪分）/ dedicated credential-leak scan |
 | `gate --path <dir> --min 90` | **CI 门禁**：就绪分低于阈值即非零退出 / quality gate for pipelines |
 | `inventory [--roots ...]` | 治理：本机技能哪些能发 / which installed skills can ship |
 | `gap [--roots ...]` | **市场情报**：本机覆盖 + 组合缺口 / market gap intelligence |
@@ -125,6 +126,9 @@ Cause: `tests/` imports need `conftest.py` sys.path injection (CLI injects at mo
 
 ### ClawHub publish guide / ClawHub 上架教程
 MIT-0 forced, `skill-card.md` is reserved (rename it), Topics whole-string ≤48 chars, account age ≥1 week, pick 3 categories, README required, text-only files. `releaser.py release` builds the import intel; if `clawhub` CLI is installed + logged in, it publishes for real.
+
+### 凭据/密码/授权码会不会被发到 GitHub？ / Will my credentials leak to GitHub?
+No. `releaser.py secretscan` (and the `validate`/`release` security-redline gate, weight 12) **mandatorily scans the whole skill for hardcoded passwords / auth-codes / API tokens before publish**; on a hit it FAILs and `release` hard-blocks commit/push/publish. Environment-variable references (`os.environ.get(...)` / `${...}`) are treated as safe. Reports are **redacted** — plaintext is never echoed. If a real secret was already committed, rotate it immediately, then `git filter-repo --path <file> --invert-paths` to scrub history.
 
 ### 技能搜不到 / make my skill discoverable
 The SKILL.md `description` is the vector-search match surface; `tags` decide adjacency; GitHub topics feed external indexers (SkillsMP / skillsdirectory). Write bilingual trigger phrases into `description`, add `tags`, and set repo topics: `agent-skills claude-skills codex-skills skill-md ai-agents`.

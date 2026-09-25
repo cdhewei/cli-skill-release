@@ -87,7 +87,7 @@ def test_validate_scaffold_pass(tmp_path):
     out = gen_skill(tmp_path)
     r = run(["validate", "--path", out])
     assert r.returncode == 0
-    assert "PASS=12" in r.stdout
+    assert "PASS=13" in r.stdout
 
 
 def test_validate_score_100(tmp_path):
@@ -568,8 +568,10 @@ def test_rubric_json_field(tmp_path):
     assert r.returncode == 0, r.stderr
     payload = _json.loads(r.stdout)
     assert "rubric" in payload
-    assert payload["rubric"]["fn_smoke"]["weight"] == 14
+    assert payload["rubric"]["fn_smoke"]["weight"] == 10
     assert "功能验证" in payload["rubric"]["fn_smoke"]["reason"]
+    assert payload["rubric"]["secret"]["weight"] == 12
+    assert "安全红线" in payload["rubric"]["secret"]["reason"]
 
 
 def test_gap_combo_opportunity(tmp_path):
@@ -706,6 +708,68 @@ def test_clawhub_publish_not_installed(tmp_path):
     ok, msg = R._clawhub_publish(str(d), "cli1", "cli1", "1.0.0", "test")
     assert ok is False
     assert "未安装" in msg
+
+
+# ---------------- 1.9.4 新能力：安全红线 secretscan（消灭"不该进 GitHub 的凭据"） ----------------
+
+def test_secret_scan_detects_hardcoded_password(tmp_path):
+    d = make_skill(tmp_path, "sec1")
+    (d / "config.py").write_text('PASSWORD = "uvuzznmybedscaic123"\n', encoding="utf-8")
+    r = run(["validate", "--path", str(d)])
+    assert "安全红线" in r.stdout
+    assert r.returncode == 1
+
+
+def test_secret_scan_blocks_release(tmp_path):
+    d = make_skill(tmp_path, "sec2")
+    (d / "cfg.py").write_text('api_token = "abcdefghij1234567890"\n', encoding="utf-8")
+    r = run(["release", "--path", str(d), "--dry-run"])
+    assert "安全红线拦截" in r.stdout
+    assert r.returncode == 1
+
+
+def test_secretscan_command_detects(tmp_path):
+    d = make_skill(tmp_path, "sec3")
+    (d / "cfg.py").write_text('client_secret = "smVa8KpQ2xLm9NcR7tB4wD1eF0"\n', encoding="utf-8")
+    r = run(["secretscan", "--path", str(d)])
+    assert r.returncode == 1
+    # 命中已知/疑似凭据，且绝不回显明文
+    assert "硬编码" in r.stdout
+    assert "uvuzznmybedscaic123" not in r.stdout
+    assert "abcdefghij1234567890" not in r.stdout
+    assert "smVa8KpQ2xLm9NcR7tB4wD1eF0" not in r.stdout
+
+
+def test_secret_scan_env_ref_safe(tmp_path):
+    """环境变量引用视为安全：凭据由运行时注入，不入库，不应报警。"""
+    d = make_skill(tmp_path, "sec4")
+    (d / "config.py").write_text(
+        'PASSWORD = os.environ.get("QQ_SMTP_PASSWORD")\n'
+        'API_KEY = os.getenv("API_KEY")\n', encoding="utf-8")
+    r = run(["validate", "--path", str(d)])
+    assert r.returncode == 0               # 环境变量引用不报警 → 无 FAIL
+    assert "安全红线通过" in r.stdout       # 安全维度 PASS
+    assert "安全红线拦截" not in r.stdout   # 未被误判拦截
+
+
+def test_secret_scan_env_file_flagged(tmp_path):
+    (tmp_path / ".env").write_text('DB_PASSWORD=supersecret123\n', encoding="utf-8")
+    d = make_skill(tmp_path, "sec5")
+    (d / ".env").write_text('SMTP_PASSWORD=anothersecret99\n', encoding="utf-8")
+    r = run(["validate", "--path", str(d)])
+    assert "安全红线" in r.stdout
+    assert r.returncode == 1
+    # .env 文件本身即风险，明文不应回显
+    assert "anothersecret99" not in r.stdout
+
+
+def test_secret_scan_allowlist(tmp_path):
+    d = make_skill(tmp_path, "sec6")
+    (d / "cfg.py").write_text('PASSWORD = "redacted_dummy_value_000"\n', encoding="utf-8")
+    (d / ".releaser-secret-allow").write_text("redacted_dummy_value_000\n", encoding="utf-8")
+    r = run(["secretscan", "--path", str(d)])
+    assert r.returncode == 0
+    assert "未发现" in r.stdout
 
 
 # ---------------- 1.9.0 新能力：状态层 / 生命周期 / 自证 / 策展 ----------------

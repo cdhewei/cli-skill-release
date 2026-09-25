@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.3
+version: 1.9.4
 author: 何巍
 license: MIT-0
 description: >
@@ -48,10 +48,12 @@ metadata:
 > 本工具是**纯本地、零依赖**的发布工程助手，**默认不做任何远程操作**：
 > - 除你**显式传入 `--push`**（推送到 git 远端）或 `--publish`（通过你本机已登录的 clawhub CLI 发布）外，`release` 只做本地提交 + 打印人工导入步骤，**绝不静默触碰远端**。
 > - **不读取、不传输任何凭据**：无 `--api-token` 之类凭据形参，不存储任何密钥，不会把 token / 密码发往任何服务器。
+> - **★安全红线（凭据泄露硬闸门）**：`validate` / `gate` / `release` 在发布前**强制扫描全仓硬编码密码 / 授权码 / API Token**（`secretscan` 子命令可单独跑）；一旦命中即 FAIL 并**直接拒绝提交/推送/发布**，绝不让"不该进 GitHub 的东西"入库。环境变量引用（`os.environ.get(...)` / `${...}`）视为安全。
 > - **无隐藏网络外联**：代码不含有 `urllib` / `requests` / `socket` 外联；文档里的 `api.github.com/.../license` 只是供你**自行核验** LICENSE 的公开查询地址，工具本身不调用。
 > - **只读扫描**：`inventory` / `gap` / `curate` 仅**只读**扫描你本机已安装的技能目录，数据不出本机。
 > - **账本本地化**：`registry` 账本只写入你 home 下的本地 `ledger.json`，不上传。
 > - **无命令注入面**：所有 `subprocess` 调用均为显式参数列表（无 `shell=True`、无字符串拼接命令）。
+> - **报告脱敏**：所有检出一律**脱敏后**输出（仅留前 4 + 后 2 字符），**绝不回显明文凭据**。
 
 ---
 
@@ -82,7 +84,8 @@ metadata:
 | 子命令 | 作用 | 对标 find-skills++ |
 |---|---|---|
 | `scaffold <name>` | 一键生成带 CI 的完整可发布骨架 | — |
-| `validate --path <dir>` | **主动扫描发布陷阱 + 输出 0-100 就绪分**（+ `--json` / `--bench` 对标 / `--rubric` 透明评分）+ **★功能级/可执行验证** | 安全扫描 + 引用完整性 + **功能验证（竞品无人做）** |
+| `validate --path <dir>` | **主动扫描发布陷阱 + 输出 0-100 就绪分**（+ `--json` / `--bench` 对标 / `--rubric` 透明评分）+ **★功能级/可执行验证** + **★安全红线凭据扫描** | 安全扫描 + 引用完整性 + **功能验证（竞品无人做）** |
+| `secretscan --path <dir>` | **★安全红线：专项扫描硬编码密码/授权码/API Token（独立于就绪分，供发布前单独把关）** | （独有：凭据泄露硬闸门） |
 | `gate --path <dir> --min 90` | **CI 门禁**：就绪分低于阈值即非零退出（readiness-as-a-service） | （独有：质量闸门） |
 | `inventory [--roots ...]` | **扫描本机已装技能，逐条报告能否发** | install / list 治理 |
 | `gap [--roots ...]` | **市场情报：本机覆盖 + 组合缺口**（+ `--scan-json` 消费 find-skills++ 真实市场数据，交叉出"市场有/你缺"） | （独有：市场侧） |
@@ -117,8 +120,9 @@ python releaser.py validate --path ./my-skill --rubric      # 透明评分：权
 
 | 维度 | 权重 | 检查内容 |
 |---|---|---|
-| frontmatter | 8 | 含 `name/version/license`；`license` 字段 MIT/MIT-0 |
-| LICENSE-SPDX | 12 | `LICENSE` 文件存在且被 licensee 识别（SPDX 可识别） |
+| frontmatter 字段 | 8 | 含 `name/version/license` |
+| license 字段 | 4 | `license` 字段为 MIT/MIT-0 |
+| LICENSE-SPDX | 8 | `LICENSE` 文件存在且被 licensee 识别（SPDX 可识别） |
 | ASCII 版权 | 6 | 版权持有人名为 ASCII（否则判 NOASSERTION） |
 | 无 skill-card | 8 | 全仓（含子目录）无 ClawHub 保留名 `skill-card.md` |
 | doctor 门 | 10 | CLI 入口 `doctor --path .` 真跑退出 0（过 CI 必现失败陷阱） |
@@ -126,8 +130,9 @@ python releaser.py validate --path ./my-skill --rubric      # 透明评分：权
 | 引用完整 | 6 | SKILL.md 引用的 `scripts/references/assets` 文件真实存在 |
 | 零依赖 | 6 | 无第三方 import |
 | **★compile** | 8 | **全部 `.py` 通过编译（无语法错误）** |
-| **★import** | 10 | **入口模块可 import（无 import-time 崩溃）** |
-| **★--help 烟测** | 14 | **入口 `--help` 烟测通过（CLI 真能 boot）** |
+| **★import** | 6 | **入口模块可 import（无 import-time 崩溃）** |
+| **★--help 烟测** | 10 | **入口 `--help` 烟测通过（CLI 真能 boot）** |
+| **★安全红线 secret** | 12 | **全仓无硬编码密码/授权码/API Token（防重演 v1.9.x 凭据泄露事故）** |
 
 > **★功能验证是差异化价值**：skill-lint / agent-skill-linter / @effectorhq/skill-lint / Skill Validator 等竞品只查 paperwork，**没有任何一个把你的 CLI 真正执行起来证明它能 boot**。这是 releaser 独有的"engine 级"验证。
 
@@ -186,6 +191,31 @@ python releaser.py release --path . --publish        # 显式授权：经本机�
 **安全默认**：`release` 默认**不触碰远端**——只做本地 `git add/commit` 并打印 ClawHub 人工导入步骤（自动解析仓库地址、Display/Slug、推荐分类、Topics≤48）。只有你显式加 `--push` 才会 `git push`、加 `--publish` 才会调用 `clawhub publish`（且要求本机已 `npm i -g clawhub` 并 `clawhub login`）。任何远端写入都需要你明确的命令行授权，工具不会静默推送或发布。
 
 > **诚实说明**：ClawHub 无公开 REST/网页 publish 端点（无法代填 OAuth），网页"Publish"按钮仍需你登录会话点一次；本机已装并登录 `clawhub` CLI 时，`--publish` 是合法的显式发布路径。这已比"看文档自己点"的竞品快一个量级。
+
+### 2.7.1 secretscan —— ★安全红线：消灭"不该进 GitHub 的凭据"
+
+> **为什么必须有这道闸**：cli-skill-release 在 v1.9.x 曾因一个**明文 QQ SMTP 授权码被 `commit` + `push` 到公开 GitHub**，触发 ClawHub 的 `malicious.llm_malicious` 判定被 Hidden/Blocked——密码、授权码、API Token 这类东西，应该在**校对/审核/审定**环节就被消灭，绝不该有机会进仓库。
+
+`secretscan` 是这道硬闸门的专用工具，可**独立于就绪分**单独跑，也可被 `validate` / `gate` / `release` 自动调用：
+
+```bash
+python releaser.py secretscan --path .                 # 扫全仓硬编码凭据，命中即 FAIL
+python releaser.py secretscan --path . --allow-file .my-allow   # 自定义放行正则文件
+python releaser.py validate --path .                   # validate 内含 secret 维度（权重 12），命中即 FAIL
+python releaser.py release --path . --dry-run          # release 在"审定"环节硬拦：有凭据绝不提交/推送/发布
+```
+
+**扫描覆盖（宁可误报也要拦真凭据）**：
+- ① **`.env` 文件本身即风险**（无论扩展名，命中即 FAIL，禁止入库）；
+- ② **已知厂商令牌格式**：AWS Access Key、GitHub PAT、Slack/Google/Stripe/OpenAI/OpenRouter Key、JWT、PEM 私钥、`user:pass@host` BasicAuth 等；
+- ③ **硬编码凭据赋值**：`PASSWORD = "..."` / `api_key="..."` / `client_secret='...'` 等——仅当**赋值左侧标识符本身含凭据关键词**才判，避免文档/字符串提及 password/token 误伤（也避免扫描器自身定义被自伤）。
+
+**安全设计**：
+- 环境变量引用视为安全（凭据由运行时注入，不入库）：`PASSWORD = os.environ.get(...)` / `os.getenv(...)` / `${VAR}` / `{{ secrets.X }}` 一律放行；
+- 报告**一律脱敏**（仅留前 4 + 后 2 字符），**绝不回显明文**；
+- **误报**在仓库根建 `.releaser-secret-allow` 写放行正则（谨慎使用——这等于你已确认该处无真实凭据）。
+
+> **泄露应急**：若已有真实凭据入库，必须 **① 立即到对应服务轮换/吊销**（如 QQ 邮箱 SMTP 授权码）② `git filter-repo --path <file> --invert-paths` 清历史 ③ 强推覆盖远端旧历史。换密码优先于删代码——旧历史里的明文凭据一旦泄露即不可逆。
 
 ### 2.8 doctor —— 自检
 ```bash
@@ -382,6 +412,7 @@ CI 里 `python main.py doctor --path .` 时，`doctor` 子命令**必须真定�
 ## 4. 发布检查清单（交付前逐项勾）
 
 - [ ] `python releaser.py validate --path .` → 零 FAIL，就绪分接近 100
+- [ ] `python releaser.py secretscan --path .` → 无硬编码凭据/授权码（安全红线通过）
 - [ ] `python releaser.py selfcheck` → 零 WARN（或仅已知误报）
 - [ ] `doctor` 与 `doctor --path .` 退出 0
 - [ ] LICENSE 为 MIT-0 + ASCII 版权名；公开 API 确认 `spdx_id=MIT-0`

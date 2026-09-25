@@ -2,7 +2,7 @@
 name: cli-skill-release (English manual)
 slug: cli-skill-release
 displayName: CLI Skill Release Engineering (releaser.py multi-capability CLI + scaffold + CI + LICENSE + publish + market intelligence)
-version: 1.9.3
+version: 1.9.4
 author: 何巍 (He Wei)
 license: MIT-0
 description: >
@@ -47,10 +47,12 @@ keywords: cli, python, zero-dependency, skill, release, publish-skill, release-s
 > This is a **local-only, zero-dependency** release-engineering assistant that **takes no remote action by default**:
 > - Unless you explicitly pass `--push` (git push to remote) or `--publish` (publish via your logged-in `clawhub` CLI), `release` only does a local commit and prints manual-import steps — it never silently touches the remote.
 > - **No credential handling**: there is no `--api-token` parameter; the tool stores no secrets and never sends tokens / passwords to any server.
+> - **★Security red-line (hard credential-leak gate)**: `validate` / `gate` / `release` **mandatorily scan the whole skill for hardcoded passwords / auth-codes / API tokens** before publishing (the `secretscan` subcommand can be run standalone); on a hit it marks FAIL and **hard-blocks commit / push / publish**, so nothing that shouldn't go to GitHub ever gets committed. Environment-variable references (`os.environ.get(...)` / `${...}`) are treated as safe.
 > - **No hidden network egress**: the code contains no `urllib` / `requests` / socket calls. The `api.github.com/.../license` URLs in the docs are public endpoints for *you* to verify LICENSE — the tool itself never calls them.
 > - **Read-only scans**: `inventory` / `gap` / `curate` only **read** your locally installed skill directories; data never leaves your machine.
 > - **Local ledger**: the `registry` ledger is written only to a local `ledger.json` under your home; it is never uploaded.
 > - **No command-injection surface**: all `subprocess` calls use explicit argument lists (no `shell=True`, no string-concatenated commands).
+> - **Redacted reporting**: every finding is **redacted** (only first 4 + last 2 chars shown) — **plaintext credentials are never echoed**.
 
 ---
 
@@ -61,7 +63,8 @@ Run inside the cli-skill-release skill directory (zero dependency, stdlib only):
 | Subcommand | Role | vs find-skills++ |
 |---|---|---|
 | `scaffold <name>` | one-shot generate a CI-ready publishable skeleton | — |
-| `validate --path <dir>` | **★killer feature: active trap-scan + 0-100 readiness + ★functional verification** | security scan + reference integrity + **functional verify (no competitor does this)** |
+| `validate --path <dir>` | **★killer feature: active trap-scan + 0-100 readiness + ★functional verification + ★security-redline credential scan** | security scan + reference integrity + **functional verify (no competitor does this)** |
+| `secretscan --path <dir>` | **★security red-line: dedicated scan for hardcoded passwords/auth-codes/API tokens (independent of readiness score)** | (unique: hard credential-leak gate) |
 | `gate --path <dir> --min 90` | **★CI gate: non-zero exit if score below threshold (readiness-as-a-service)** | (unique: quality gate) |
 | `inventory [--roots ...]` | **govern: which installed skills can ship** | install / list governance |
 | `gap [--roots ...]` | **market intel: local coverage + combination gaps** (+ `--scan-json` consumes find-skills++ real market data) | (unique: market side) |
@@ -94,8 +97,9 @@ It **really runs** the following checks and gives PASS/WARN/FAIL, then a **0-100
 
 | Dimension | Weight | Check |
 |---|---|---|
-| frontmatter | 8 | has `name/version/license`; `license` is MIT/MIT-0 |
-| LICENSE-SPDX | 12 | `LICENSE` exists and is recognized by licensee (SPDX) |
+| frontmatter | 8 | has `name/version/license` |
+| license field | 4 | `license` field is MIT/MIT-0 |
+| LICENSE-SPDX | 8 | `LICENSE` exists and is recognized by licensee (SPDX) |
 | ASCII copyright | 6 | copyright holder name is ASCII (else NOASSERTION) |
 | no skill-card | 8 | no ClawHub reserved name `skill-card.md` anywhere |
 | doctor gate | 10 | CLI entry `doctor --path .` really exits 0 |
@@ -103,8 +107,9 @@ It **really runs** the following checks and gives PASS/WARN/FAIL, then a **0-100
 | reference integrity | 6 | files referenced by SKILL.md really exist |
 | zero dependency | 6 | no third-party imports |
 | **★compile** | 8 | **all `.py` compile (no syntax errors)** |
-| **★import** | 10 | **entry module imports (no import-time crash)** |
-| **★--help smoke** | 14 | **entry `--help` smoke test passes (CLI really boots)** |
+| **★import** | 6 | **entry module imports (no import-time crash)** |
+| **★--help smoke** | 10 | **entry `--help` smoke test passes (CLI really boots)** |
+| **★security red-line** | 12 | **no hardcoded passwords/auth-codes/API tokens (prevents the v1.9.x credential-leak incident)** |
 
 > **★Functional verification is the differentiator**: skill-lint / agent-skill-linter / @effectorhq/skill-lint / Skill Validator only check paperwork — none actually execute your CLI to prove it boots. That's releaser's unique engine-level verification.
 
@@ -158,6 +163,31 @@ python releaser.py release --path . --publish        # explicit: publish via you
 ```
 **Safe default**: `release` does **not** touch the remote by default — it only does a local `git add/commit` and prints ClawHub manual-import steps (auto-resolving repo URL, Display/Slug, top-3 categories, Topics ≤48). You must explicitly pass `--push` to `git push`, or `--publish` to call `clawhub publish` (requires `clawhub` CLI installed and `clawhub login` done). No remote write happens without your explicit flag.
 > **Honest note**: ClawHub has no public REST/web publish endpoint (can't proxy OAuth), so the web "Publish" button still needs your login session to click once; `--publish` is the legal explicit path when the `clawhub` CLI is installed and logged in. Faster than competitors' "read the doc and click yourself" by an order of magnitude.
+
+### 2.7.1 secretscan — ★security red-line: kill "things that shouldn't go to GitHub"
+
+> **Why this gate is mandatory**: in v1.9.x, cli-skill-release got flagged `malicious.llm_malicious` and Blocked/Hidden on ClawHub because a **plaintext QQ SMTP auth-code had been `commit`+`push`ed to the public GitHub repo**. Passwords / auth-codes / API tokens must be eliminated in the **proofread / review / approve** loop — they must never reach the repo.
+
+`secretscan` is the dedicated hard gate. It runs standalone, and is also auto-invoked by `validate` / `gate` / `release`:
+
+```bash
+python releaser.py secretscan --path .                 # scan whole skill for hardcoded creds, FAIL on hit
+python releaser.py secretscan --path . --allow-file .my-allow   # custom allowlist regex file
+python releaser.py validate --path .                   # validate includes the secret dimension (weight 12), FAIL on hit
+python releaser.py release --path . --dry-run          # release hard-blocks at the "approve" stage: creds → no commit/push/publish
+```
+
+**Coverage (prefer false positives over missing a real secret)**:
+- ① **`.env` files themselves are risky** (any extension, FAIL on hit, forbidden in repo);
+- ② **known vendor token formats**: AWS Access Key, GitHub PAT, Slack/Google/Stripe/OpenAI/OpenRouter Key, JWT, PEM private key, `user:pass@host` BasicAuth, etc.;
+- ③ **hardcoded credential assignments**: `PASSWORD = "..."` / `api_key="..."` / `client_secret='...'` — only flagged when the **assignment's left-hand identifier** contains a credential keyword, avoiding false positives from docs/strings mentioning password/token (and avoiding the scanner flagging its own definitions).
+
+**Safety design**:
+- Environment-variable references are treated as safe (creds injected at runtime, not in repo): `PASSWORD = os.environ.get(...)` / `os.getenv(...)` / `${VAR}` / `{{ secrets.X }}` are all allowed;
+- reports are **redacted** (only first 4 + last 2 chars) — **plaintext never echoed**;
+- **false positives**: add `.releaser-secret-allow` at repo root with allowlist regexes (use with care — this means you've confirmed no real creds there).
+
+> **Leak response**: if a real credential is already in the repo, you must **① immediately rotate/revoke it at the service** (e.g. QQ mailbox SMTP auth-code) ② `git filter-repo --path <file> --invert-paths` to scrub history ③ force-push to overwrite the old remote history. Rotate the password before deleting code — plaintext in old history is irreversible once leaked.
 
 ### 2.8 doctor — self-check
 ```bash
@@ -282,6 +312,7 @@ In CI, `python main.py doctor --path .` — the `doctor` subcommand **must reall
 
 ## 4. Publish checklist (verify each before delivery)
 - [ ] `python releaser.py validate --path .` → zero FAIL, score near 100
+- [ ] `python releaser.py secretscan --path .` → no hardcoded credentials (security red-line passed)
 - [ ] `python releaser.py selfcheck` → zero WARN (or only known false positives)
 - [ ] `doctor` and `doctor --path .` exit 0
 - [ ] LICENSE is MIT-0 + ASCII holder name; public API confirms `spdx_id=MIT-0`
