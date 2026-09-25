@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [1.9.6] — 2026-09-25 · 上架元数据固化（每次 publish/release 自动列出 categories + topics，供直接复制操作）
+
+### 新增：发布元数据自动列出（回应"每次都要帮我列 categories/topics 我才好操作"）
+- **frontmatter 固化上架元数据**：每个技能 SKILL.md 新增 `clawhub_categories`（ClawHub 官方精确 slug，≤3）、
+  `clawhub_topics`（≤5，自动过滤保留词/≤48 字符）、`github_topics`。缺失时由 keywords 自动推导。
+- **`publish` / `release` 每次都打印**：ClawHub 分类(slug) + ClawHub Topics + GitHub topics，可直接复制粘贴到各站，
+  不用再问我"填什么分类/标签"。
+- **ClawHub 官方 slug 白名单**已内置（`development/automation/security/...`），自动映射内部可读标签 → 官方 slug，
+  杜绝"分类填错被拒"。
+- 本技能与 `find-skills++` 均已预填各自的上架元数据（`parse_frontmatter` 读同目录 SKILL.md，跨技能通用）。
+
 ## [1.9.5] — 2026-09-25 · 多站上架编排（publish：正确更新/新技能后，一键分发 GitHub + ClawHub）
 
 ### 新增：★多站上架编排 `publish`（显式逐站授权，安全闸门前置）

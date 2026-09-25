@@ -335,6 +335,72 @@ def categorize(text):
     return sorted(hits, key=lambda c: hits[c], reverse=True)
 
 
+# ClawHub 发布要求：categories 必须是官方精确 slug（≤3 个），topics 为自由标签（≤5 个、≤48 字符、禁用保留词）
+# 官方 slug 列表（docs.openclaw.ai/clawhub/publishing）：
+#   integrations, automation, research, development, productivity, communication,
+#   creative, knowledge, agents, operations, security, finance, lifestyle, other
+# 内部 CATEGORY_KEYWORDS 用可读标签做市场情报；发布到 ClawHub 时映射成官方 slug
+CLAWHUB_CATEGORY_SLUG = {
+    "Developer Tools": "development",
+    "Security": "security",
+    "Productivity": "productivity",
+    "Finance": "finance",
+    "AI & ML": "agents",
+    "Data": "research",
+    "Web": "research",
+    "Content": "creative",
+}
+# ClawHub 拒绝的保留词（作为 topic 会被拒）
+CLAWHUB_RESERVED_TOPICS = {
+    "approved", "audited", "certified", "clawhub", "community", "curated",
+    "endorsed", "featured", "official", "officials", "openclaw", "recommended",
+    "staff-pick", "trusted", "trusted-publisher", "verified",
+}
+
+
+def _as_list(val):
+    """把 frontmatter 里的字段统一成小写字符串列表（兼容逗号分隔串与列表）。"""
+    if isinstance(val, list):
+        items = val
+    elif isinstance(val, str):
+        items = [x for x in val.split(",") if x.strip()]
+    else:
+        items = []
+    return [str(x).strip().lower() for x in items if str(x).strip()]
+
+
+def _registry_meta(fm):
+    """发布元数据：优先读 frontmatter 的 clawhub_categories/clawhub_topics/github_topics；
+    缺失时由 keywords 自动推导（categories 映射成 ClawHub 官方 slug）。"""
+    # ClawHub 分类：frontmatter 显式 > 自动（内部标签 → 官方 slug，去重保序，≤3）
+    cc = _as_list(fm.get("clawhub_categories"))
+    if cc:
+        seen, uniq = set(), []
+        for c in cc:
+            if c not in seen:
+                seen.add(c); uniq.append(c)
+        categories = uniq[:3]
+    else:
+        auto = categorize(" ".join([fm.get("keywords", ""), fm.get("description", "")]))[:3]
+        seen, uniq = set(), []
+        for c in auto:
+            s = CLAWHUB_CATEGORY_SLUG.get(c, "development")
+            if s not in seen:
+                seen.add(s); uniq.append(s)
+        categories = uniq[:3] or ["development"]
+    # ClawHub topics：frontmatter 显式 > 自动（过滤保留词 + ≤48 字符，≤5）
+    ct = _as_list(fm.get("clawhub_topics"))
+    if ct:
+        topics = [t[:48] for t in ct if t and t not in CLAWHUB_RESERVED_TOPICS][:5]
+    else:
+        topics = [t.strip().lower()[:48] for t in _auto_topics(fm.get("keywords", "")).split(",")
+                  if t.strip() and t.strip().lower() not in CLAWHUB_RESERVED_TOPICS][:5]
+    # GitHub topics：frontmatter 显式 > 默认推荐
+    gt = _as_list(fm.get("github_topics"))
+    github = gt or ["agent-skills", "skill-md", "python", "mit-0"]
+    return categories, topics, github
+
+
 def find_main_entry(skill_dir, slug):
     cand = os.path.join(skill_dir, slug.replace("-", "_") + ".py")
     if os.path.isfile(cand):
@@ -1181,8 +1247,8 @@ def cmd_release(args):
     name = fm.get("name") or os.path.basename(os.path.abspath(d))
     slug = fm.get("slug") or os.path.basename(os.path.abspath(d))
     ver = fm.get("version") or "1.0.0"
-    cats = categorize(" ".join([name, fm.get("keywords", ""), fm.get("description", "")]))[:3] or ["Developer Tools"]
-    topics = _auto_topics(fm.get("keywords", ""))
+    cats, topics_list, github = _registry_meta(fm)
+    topics = ", ".join(topics_list) or "skill"
     repo = _repo_url(d)
     print("\n[release] 下一步（ClawHub 导入，需你登录后点一次）:")
     print("  ① 打开 ClawHub → Import from GitHub")
@@ -1191,8 +1257,9 @@ def cmd_release(args):
     else:
         print("  ② 粘贴本仓库的 GitHub 地址（当前未配置 origin remote）")
     print("  ③ 预填（自动）: Display=%s | Slug=%s" % (name, slug))
-    print("      License=MIT-0 | 分类=%s" % " / ".join(cats))
-    print("      Topics=%s  (≤48 字符已自动截断)" % topics)
+    print("      License=MIT-0 | ClawHub 分类(slug)=%s" % " / ".join(cats))
+    print("      ClawHub Topics=%s  (≤5，已过滤保留词/≤48字符)" % topics)
+    print("      GitHub topics=%s" % ", ".join(github))
     print("  ④ 点 Publish selected 即上线。")
     # 登记到账本（状态层 A）：发布动作即记录，供 recheck 生命周期治理消费
     try:
@@ -1309,7 +1376,15 @@ def cmd_publish(args):
             targets.append(name)
     if not targets:
         print("\n[publish] 未指定任何 --<站点> 开关，按设计不触碰任何远程（防静默外发）。")
-        print("[publish] 预览：可对以下目标显式授权上架 ——")
+    # 上架元数据：从 frontmatter 读取（或自动推导），供你复制到各站
+    fm, _ = parse_frontmatter(os.path.join(d, "SKILL.md"))
+    cats, topics_list, github = _registry_meta(fm)
+    print("\n[publish] 上架元数据（复制到各站时直接粘贴）:")
+    print("    ClawHub 分类(精确 slug, ≤3): %s" % ", ".join(cats))
+    print("    ClawHub Topics(≤5, 已过滤保留词/≤48字符): %s" % (", ".join(topics_list) or "skill"))
+    print("    GitHub topics: %s" % ", ".join(github))
+    if not targets:
+        print("\n[publish] 预览：可对以下目标显式授权上架 ——")
         print("    python releaser.py publish --github            # 推送到 GitHub")
         print("    python releaser.py publish --clawhub           # 发布到 ClawHub（需 clawhub CLI 登录）")
         print("    python releaser.py publish --github --clawhub  # 两站一起（你选定的本轮范围）")

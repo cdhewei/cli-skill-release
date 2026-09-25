@@ -2,7 +2,7 @@
 name: cli-skill-release (English manual)
 slug: cli-skill-release
 displayName: CLI Skill Release Engineering (releaser.py multi-capability CLI + scaffold + CI + LICENSE + publish + market intelligence)
-version: 1.9.5
+version: 1.9.6
 author: 何巍 (He Wei)
 license: MIT-0
 description: >

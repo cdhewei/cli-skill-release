@@ -2,7 +2,7 @@
 name: cli-skill-release
 slug: cli-skill-release
 displayName: CLI 技能发布工程（releaser.py 多能力 CLI + 脚手架 + CI + LICENSE + 上架 + 市场情报）
-version: 1.9.5
+version: 1.9.6
 author: 何巍
 license: MIT-0
 description: >
@@ -28,6 +28,10 @@ keywords: cli, python, zero-dependency, skill, release, publish-skill, release-s
 xiaping_trigger: ["技能", "发布", "CI", "工具", "工程", "上架", "脚手架", "校验", "市场缺口", "长尾", "诊断"]
 xiaping_category: ["效率工具"]
 xiaping_tags: ["技能开发", "发布工程", "GitHub", "CI", "Python"]
+# 上架元数据（发布到各站时直接复制；categories 必须是 ClawHub 官方精确 slug，≤3 个）
+clawhub_categories: development, automation, security
+clawhub_topics: skill-publishing, release-engineering, quality-gate, ci-cd, secret-scan
+github_topics: agent-skills, skill-publishing, release-engineering, quality-gate, ci-cd, python, mit-0
 xiaping_eval_strategy: developer
 metadata:
   slug: cli-skill-release
